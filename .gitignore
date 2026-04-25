@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+build/
+
+# env
+.env
+
+# logs
+*.log
+
+# system
+.DS_Store
+
+# vscode
+.vscode/
+
+# supabase (optional if needed)
+.supabase/

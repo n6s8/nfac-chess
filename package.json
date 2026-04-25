@@ -1,0 +1,32 @@
+{
+  "name": "algochess",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "setup:stockfish": "node scripts/setup-stockfish.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "chess.js": "^1.1.0",
+    "groq-sdk": "^1.1.2",
+    "react": "^18.3.1",
+    "react-chessboard": "^4.6.2",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "stockfish": "^16.0.0",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}
