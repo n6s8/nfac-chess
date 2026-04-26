@@ -333,3 +333,59 @@ begin
   return v_game_id;
 end;
 $$;
+
+-- ─── Friends System ───────────────────────────────────────────────────────────
+
+create table if not exists public.friendships (
+  id          uuid primary key default gen_random_uuid(),
+  requester_id uuid not null references auth.users(id) on delete cascade,
+  addressee_id uuid not null references auth.users(id) on delete cascade,
+  status      text not null default 'pending'
+                check (status in ('pending', 'accepted', 'declined')),
+  created_at  timestamptz not null default now(),
+  unique (requester_id, addressee_id)
+);
+
+create table if not exists public.friend_challenges (
+  id           uuid primary key default gen_random_uuid(),
+  from_user_id uuid not null references auth.users(id) on delete cascade,
+  to_user_id   uuid not null references auth.users(id) on delete cascade,
+  room_id      uuid references public.game_rooms(id) on delete cascade,
+  status       text not null default 'pending'
+                 check (status in ('pending', 'accepted', 'declined')),
+  created_at   timestamptz not null default now()
+);
+
+-- Indexes for fast lookups
+create index if not exists idx_friendships_requester on public.friendships(requester_id);
+create index if not exists idx_friendships_addressee on public.friendships(addressee_id);
+create index if not exists idx_friend_challenges_to  on public.friend_challenges(to_user_id);
+
+-- RLS
+alter table public.friendships       enable row level security;
+alter table public.friend_challenges enable row level security;
+
+-- Drop policies before recreating (CREATE POLICY IF NOT EXISTS requires PG17+)
+drop policy if exists "friendships_select" on public.friendships;
+drop policy if exists "friendships_insert" on public.friendships;
+drop policy if exists "friendships_update" on public.friendships;
+drop policy if exists "friendships_delete" on public.friendships;
+drop policy if exists "challenges_select"  on public.friend_challenges;
+drop policy if exists "challenges_insert"  on public.friend_challenges;
+drop policy if exists "challenges_update"  on public.friend_challenges;
+
+create policy "friendships_select" on public.friendships for select
+  using (auth.uid() = requester_id or auth.uid() = addressee_id);
+create policy "friendships_insert" on public.friendships for insert
+  with check (auth.uid() = requester_id);
+create policy "friendships_update" on public.friendships for update
+  using (auth.uid() = addressee_id);
+create policy "friendships_delete" on public.friendships for delete
+  using (auth.uid() = requester_id or auth.uid() = addressee_id);
+
+create policy "challenges_select" on public.friend_challenges for select
+  using (auth.uid() = from_user_id or auth.uid() = to_user_id);
+create policy "challenges_insert" on public.friend_challenges for insert
+  with check (auth.uid() = from_user_id);
+create policy "challenges_update" on public.friend_challenges for update
+  using (auth.uid() = to_user_id);

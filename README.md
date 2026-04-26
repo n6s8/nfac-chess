@@ -6,6 +6,22 @@ The system runs a real-time Stockfish evaluation engine in the browser, a multi-
 
 ---
 
+## Live Deployment
+
+| | |
+|---|---|
+| **Production URL** | https://nfac-chess.vercel.app |
+| **Repository** | https://github.com/n6s8/nfac-chess |
+| **Hosting** | Vercel (static, auto-deploy on push to main) |
+| **Database** | Supabase PostgreSQL — live, connected, RLS enabled |
+| **Auth** | Supabase Auth — email/password, session-based |
+| **AI Inference** | Groq API — llama-3.1-8b-instant, live |
+| **Chess Engine** | Stockfish 16 WASM — runs in browser Web Worker, no server |
+
+All three external services (Vercel, Supabase, Groq) are fully connected and operational in production. No mock data. No placeholder keys. The multiplayer rooms, ELO updates, game history, and AI debriefs all write to and read from the live Supabase database.
+
+---
+
 ## What Was Built
 
 | Area | Description |

@@ -31,13 +31,31 @@ export function AuthModal({ open, onClose, onSuccess }: Props) {
 
     try {
       if (mode === 'signup') {
+        // Check username is provided
+        const trimmedUsername = username.trim()
+        if (!trimmedUsername) {
+          setError('Username is required.')
+          setLoading(false)
+          return
+        }
+
+        // Check username uniqueness before attempting signup
+        const { data: existing } = await import('@/lib/supabase').then(m =>
+          m.supabase.from('profiles').select('id').eq('username', trimmedUsername).maybeSingle()
+        )
+        if (existing) {
+          setError('That username is already taken. Choose a different one.')
+          setLoading(false)
+          return
+        }
+
         const { user, session } = await signUp(identifier, password, country, city)
 
         if (user) {
           await upsertProfile({
             id: user.id,
             email: user.email ?? identifier,
-            username: username || null,
+            username: trimmedUsername,
             country,
             city,
           }).catch((profileError) => {
@@ -46,10 +64,12 @@ export function AuthModal({ open, onClose, onSuccess }: Props) {
         }
 
         if (session) {
+          // Email confirmation is OFF — user is logged in immediately
           onSuccess()
           onClose()
         } else {
-          setMessage('Account created. Check your email to confirm the sign-in link.')
+          // Email confirmation is ON — tell user to check email
+          setMessage('Account created. Check your email to confirm and then sign in.')
         }
       } else {
         const { user } = await signIn(identifier, password)
@@ -59,7 +79,17 @@ export function AuthModal({ open, onClose, onSuccess }: Props) {
         }
       }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Authentication failed')
+      const msg = submitError instanceof Error ? submitError.message : 'Authentication failed'
+      // Make Supabase errors more human-readable
+      if (msg.includes('already registered') || msg.includes('already been registered')) {
+        setError('An account with this email already exists. Sign in instead.')
+      } else if (msg.includes('Invalid login credentials')) {
+        setError('Incorrect email/username or password.')
+      } else if (msg.includes('Password should be at least')) {
+        setError('Password must be at least 6 characters.')
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
