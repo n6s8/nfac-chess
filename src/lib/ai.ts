@@ -83,7 +83,7 @@ export async function explainMove(move: string, bestMove: string): Promise<strin
 
   try {
     const completion = await groq.chat.completions.create({
-      model: 'llama3-8b-8192',
+      model: 'llama-3.1-8b-instant',
       temperature: 0.4,
       max_completion_tokens: 80,
       messages: [
@@ -209,14 +209,14 @@ function getSeverity(evaluationDiff: number): number {
 function createFallbackExplanation(type: MistakeType, move: string, bestMove: string): string {
   switch (type) {
     case 'greedy':
-      return `${move} behaves like a greedy algorithm by chasing immediate value while ${bestMove} keeps the stronger long-term plan.`
+      return `Playing ${move} behaves like a greedy algorithm by capturing immediately, while ${bestMove} keeps the stronger long-term plan.`
     case 'minimax':
-      return `${move} misses the opponent's best reply, while ${bestMove} matches a deeper minimax choice.`
+      return `Playing ${move} missed the opponent's best response, while ${bestMove} matches a deeper minimax calculation tree.`
     case 'tradeoff':
-      return `${move} chooses the wrong trade-off between tempo, safety, and activity, while ${bestMove} balances those costs better.`
+      return `Playing ${move} miscalculated the trade-off costs between tempo and safety, while ${bestMove} balances them.`
     case 'positional':
     default:
-      return `${move} weakens the position incrementally, while ${bestMove} preserves coordination and long-term structure.`
+      return `Playing ${move} weakens the position incrementally, while ${bestMove} preserves long-term structure.`
   }
 }
 

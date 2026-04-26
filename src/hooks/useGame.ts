@@ -107,24 +107,46 @@ function reducer(state: ExtendedGameState, action: Action): ExtendedGameState {
   }
 }
 
-function computeThinkingStyle(moves: ChessMove[]): ThinkingStyleProfile {
+function computeThinkingStyle(moves: ChessMove[], analysis?: MoveAnalysis[]): ThinkingStyleProfile {
   const counts: Record<MistakeType, number> = { greedy: 0, minimax: 0, tradeoff: 0, positional: 0 }
-  const playerMoves = moves.filter((_, i) => i % 2 === 0) // white moves = player moves
+  // Player moves are even-indexed (0, 2, 4...) for white
+  const playerMoves = moves.filter((_, i) => i % 2 === 0)
   if (playerMoves.length === 0) return { greedy: 0, minimax: 0, tradeoff: 0, positional: 100 }
 
-  for (const move of playerMoves) {
-    const style = classifyMoveStyle(move.san)
+  for (let i = 0; i < playerMoves.length; i++) {
+    const moveIndex = i * 2
+    const analysisEntry = analysis?.find((a) => a.moveIndex === moveIndex)
+    
+    if (analysisEntry) {
+      // Use the analysis type for blunders and mistakes – it is more accurate
+      if (analysisEntry.blunder || analysisEntry.mistake) {
+        counts[analysisEntry.type]++
+        continue
+      }
+    }
+    
+    // Fallback to SAN-based classification for good moves
+    const style = classifyMoveStyle(playerMoves[i].san)
     counts[style]++
   }
 
   const total = playerMoves.length
-  return {
+  const profile = {
     greedy: Math.round((counts.greedy / total) * 100),
     minimax: Math.round((counts.minimax / total) * 100),
     tradeoff: Math.round((counts.tradeoff / total) * 100),
     positional: Math.round((counts.positional / total) * 100),
   }
+
+  // Ensure percentages sum to 100
+  const sum = profile.greedy + profile.minimax + profile.tradeoff + profile.positional
+  if (sum !== 100 && sum > 0) {
+    profile.positional += 100 - sum
+  }
+
+  return profile
 }
+
 
 async function updateEloAfterGame(
   user: AuthUser,
@@ -267,7 +289,7 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
     try {
       const engine = getEngine()
       // Pass correct depth AND skill level for this difficulty
-      const evaluation = await engine.evaluate(getFen(game), levelConfig.depth, levelConfig.skill)
+      const evaluation = await engine.evaluate(getFen(game), levelConfig.depth, levelConfig.skill, levelConfig.elo)
       const lastMove = state.moves[state.moves.length - 1]
       const preview = previewRef.current
 
@@ -326,7 +348,7 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
       dispatch({ type: 'AI_THINKING', value: false })
       isProcessingAi.current = false
     }
-  }, [levelConfig.depth, levelConfig.skill, state.moves, state.playerColor, user])
+  }, [levelConfig.depth, levelConfig.skill, levelConfig.elo, state.moves, state.playerColor, user])
 
   useEffect(() => {
     if (state.status !== 'playing') return
@@ -362,7 +384,7 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
         dispatch({ type: 'ANALYSIS_PROGRESS', pct: 70 + Math.round(pct * 0.3) })
       })
 
-      const thinkingStyle = computeThinkingStyle(state.moves)
+      const thinkingStyle = computeThinkingStyle(state.moves, enriched)
       dispatch({ type: 'ANALYSIS_DONE', analysis: enriched, thinkingStyle })
 
       if (user?.id) {

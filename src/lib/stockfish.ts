@@ -1,15 +1,15 @@
 import type { Evaluation } from '@/types'
 
-const WORKER_URL = '/stockfish.js#stockfish-nnue-16-single.wasm,worker'
-const READY_TIMEOUT_MS = 10_000
-const SEARCH_TIMEOUT_MS = 8_000
+const WORKER_URL = '/sf-worker.js'
+const READY_TIMEOUT_MS = 20_000
+const SEARCH_TIMEOUT_MS = 15_000
 
-// Correct depth + skill mapping per level requirement
-export const LEVEL_CONFIG: Record<string, { depth: number; skill: number }> = {
-  Beginner: { depth: 3, skill: 0 },
-  Intermediate: { depth: 8, skill: 10 },
-  Advanced: { depth: 15, skill: 18 },
-  Master: { depth: 20, skill: 20 },
+// Correct depth + skill + Elo mapping per level
+export const LEVEL_CONFIG: Record<string, { depth: number; skill: number; elo: number }> = {
+  Beginner:     { depth: 3,  skill: 0,  elo: 800  },
+  Intermediate: { depth: 8,  skill: 10, elo: 1500 },
+  Advanced:     { depth: 15, skill: 18, elo: 2000 },
+  Master:       { depth: 20, skill: 20, elo: 3200 },
 }
 
 interface PendingRequest {
@@ -28,6 +28,7 @@ class StockfishEngine {
   private pending: PendingRequest | null = null
   private currentEval: Partial<Evaluation> = {}
   private configuredSkill = -1
+  private configuredElo = -1
   private stopPromise: Promise<void> | null = null
   private resolveStop: (() => void) | null = null
   private isEvaluating = false
@@ -96,10 +97,10 @@ class StockfishEngine {
 
     if (line.startsWith('bestmove')) {
       const bestMove = line.split(' ')[1]
-      if (bestMove && bestMove !== '(none)') {
-        this.currentEval.bestMove = bestMove
-      }
-      if (this.pending && this.currentEval.bestMove) {
+      
+      this.currentEval.bestMove = bestMove && bestMove !== '(none)' ? bestMove : ''
+      
+      if (this.pending && this.currentEval.bestMove !== undefined) {
         window.clearTimeout(this.pending.timeoutId)
         this.pending.resolve({
           score: this.currentEval.score ?? 0,
@@ -108,6 +109,7 @@ class StockfishEngine {
         })
         this.pending = null
       }
+      
       this.isEvaluating = false
       if (this.resolveStop) {
         this.resolveStop()
@@ -138,13 +140,23 @@ class StockfishEngine {
     await this.readyPromise
   }
 
-  setSkillLevel(skill: number) {
-    if (this.configuredSkill === skill) return
-    this.configuredSkill = skill
-    this.worker?.postMessage(`setoption name Skill Level value ${skill}`)
+  setStrength(skill: number, elo: number) {
+    if (this.configuredSkill !== skill) {
+      this.configuredSkill = skill
+      this.worker?.postMessage(`setoption name Skill Level value ${skill}`)
+    }
+    if (this.configuredElo !== elo) {
+      this.configuredElo = elo
+      if (elo < 3200) {
+        this.worker?.postMessage('setoption name UCI_LimitStrength value true')
+        this.worker?.postMessage(`setoption name UCI_Elo value ${elo}`)
+      } else {
+        this.worker?.postMessage('setoption name UCI_LimitStrength value false')
+      }
+    }
   }
 
-  async evaluate(fen: string, depth: number, skill?: number): Promise<Evaluation> {
+  async evaluate(fen: string, depth: number, skill?: number, elo?: number): Promise<Evaluation> {
     await this.waitReady()
     if (!this.worker) throw new Error('Stockfish worker is not available')
 
@@ -166,7 +178,11 @@ class StockfishEngine {
 
     if (!this.worker) throw new Error('Stockfish worker is not available')
 
-    if (skill !== undefined) this.setSkillLevel(skill)
+    if (skill !== undefined && elo !== undefined) {
+      this.setStrength(skill, elo)
+    } else if (skill !== undefined) {
+      this.setStrength(skill, this.configuredElo >= 0 ? this.configuredElo : 3200)
+    }
 
     this.currentEval = {}
     this.isEvaluating = true
@@ -175,8 +191,6 @@ class StockfishEngine {
       const timeoutId = window.setTimeout(() => {
         if (this.pending?.resolve === resolve) {
           this.worker?.postMessage('stop')
-          this.pending = null
-          reject(new Error('Stockfish evaluation timed out'))
         }
       }, SEARCH_TIMEOUT_MS)
 
@@ -191,6 +205,7 @@ class StockfishEngine {
     this.worker?.postMessage('stop')
     this.worker?.postMessage('ucinewgame')
     this.configuredSkill = -1
+    this.configuredElo = -1
   }
 
   destroy() {

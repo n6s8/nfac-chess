@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { GameState, MistakeType, MoveAnalysis } from '@/types'
+import { ProModal, useProStatus } from './ProModal'
+import { MasterCouncilPanel } from './MasterCouncilPanel'
 
 interface Props {
   state: GameState
@@ -35,6 +37,8 @@ const TYPE_META: Record<
 
 export function AnalysisPanel({ state, onRunAnalysis, onReset }: Props) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const { isPro, upgradeToPro } = useProStatus()
+  const [proModalOpen, setProModalOpen] = useState(false)
 
   const gameOver = state.result !== null || state.status === 'draw' || state.status === 'checkmate'
   const issues = useMemo(
@@ -77,6 +81,26 @@ export function AnalysisPanel({ state, onRunAnalysis, onReset }: Props) {
         >
           Analyse Game
         </button>
+      ) : null}
+
+      {gameOver && !state.isAnalyzing ? (
+        <div className="mb-4 mt-2">
+          {isPro && state.analysis.length > 0 ? (
+              <MasterCouncilPanel moves={state.moves} analysis={state.analysis} />
+          ) : isPro && state.analysis.length === 0 ? (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-lg text-center">
+                  <p className="text-emerald-400 font-mono text-sm">👑 Pro Activated: Click "Analyse Game" above first to gather data for your Master Council!</p>
+              </div>
+          ) : (
+              <button 
+                  onClick={() => setProModalOpen(true)}
+                  className="w-full rounded-lg bg-gradient-to-r from-emerald-500/80 to-emerald-700/80 border border-emerald-400/50 px-4 py-4 text-sm font-display tracking-wider text-white transition-all hover:scale-[1.01] shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-2"
+              >
+                  <span>✨</span> Generate Master Council Debrief (Pro Only)
+              </button>
+          )}
+          <ProModal open={proModalOpen} onClose={() => setProModalOpen(false)} onUpgrade={upgradeToPro} />
+        </div>
       ) : null}
 
       {state.isAnalyzing ? (
