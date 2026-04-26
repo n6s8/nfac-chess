@@ -14,11 +14,13 @@ The system runs a real-time Stockfish evaluation engine in the browser, a multi-
 | **Repository** | https://github.com/n6s8/nfac-chess |
 | **Hosting** | Vercel (static, auto-deploy on push to main) |
 | **Database** | Supabase PostgreSQL — live, connected, RLS enabled |
+| **Backend API** | Supabase Edge Functions (Secure API proxy, Stripe Webhooks) |
 | **Auth** | Supabase Auth — email/password, session-based |
+| **Monetization** | Stripe Checkout & Webhooks (Test Mode) |
 | **AI Inference** | Groq API — llama-3.1-8b-instant, live |
 | **Chess Engine** | Stockfish 16 WASM — runs in browser Web Worker, no server |
 
-All three external services (Vercel, Supabase, Groq) are fully connected and operational in production. No mock data. No placeholder keys. The multiplayer rooms, ELO updates, game history, and AI debriefs all write to and read from the live Supabase database.
+All external services (Vercel, Supabase, Groq, Stripe) are fully connected and operational in production. The multiplayer rooms, ELO updates, game history, virtual economy, and AI debriefs all write to and read from the live Supabase database. Server-side secrets are securely managed in Supabase Edge Functions.
 
 ---
 
@@ -33,6 +35,8 @@ All three external services (Vercel, Supabase, Groq) are fully connected and ope
 | Friends and Challenges | Friend request system with search by username. Accepted friends can be challenged directly from the profile page, which creates a room and sends a notification. |
 | Rating System | ELO-style rating adjustments after every game, shown as a delta chip on the board after the result. |
 | Profile and History | Full game history with replay support. Country/city-based leaderboard. |
+| Economy & Store | Server-side coin economy (earn coins by playing). Purchase board themes in the Store. |
+| Monetization (Pro) | Fully integrated Stripe Checkout to upgrade to Pro, unlocking the Master Council debrief and exclusive themes. |
 
 ---
 
@@ -62,9 +66,10 @@ flowchart TD
 
     subgraph Supabase["Supabase (Backend)"]
         Auth["Auth\n(email/password)"]
-        DB["PostgreSQL\n(profiles, games, game_rooms\nfriendships, friend_challenges)"]
+        DB["PostgreSQL\n(profiles, games, game_rooms)"]
         RT["Realtime\n(WebSocket per room)"]
-        RPC["Stored Procedure\nrecord_multiplayer_result"]
+        RPC["Stored Procedures\n(economy, transactions)"]
+        Edge["Edge Functions\n(AI Proxy, Stripe Webhook)"]
     end
 
     UI --> Hook_SP
@@ -367,10 +372,16 @@ Edit `.env.local`:
 ```
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<your-anon-key>
-VITE_GROQ_API_KEY=<your-groq-key>
+
+# For basic single-player move analysis
+VITE_GROQ_API_KEY=gsk_...
+
+# Stripe public keys
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+VITE_STRIPE_PRICE_ID=price_...
 ```
 
-The Groq key is used for move explanations and the multi-agent debrief. If omitted, the engine analysis still runs but explanations will be skipped and the Master Council will not be available.
+**Note on Security:** Sensitive keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the main `GROQ_API_KEY` for the Master Council) are stored securely in **Supabase Secrets** and are only accessed by Edge Functions. They are never exposed to the browser.
 
 **4. Apply the database schema**
 
@@ -434,8 +445,6 @@ src/
 ---
 
 ## Known Limitations
-
-**LLM keys in the client bundle**: API keys are currently loaded via `import.meta.env` and are visible in the browser's network inspector. For production, proxy these through a Supabase Edge Function.
 
 **RAG knowledge base**: The historian agent uses a fixed 4-game knowledge base injected into the prompt. It is not a semantic vector search. Results are plausible but not verifiably accurate. Extending this to a real retrieval system would require a vector store and an embedding model.
 
