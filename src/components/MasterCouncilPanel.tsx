@@ -1,26 +1,45 @@
+/**
+ * MasterCouncilPanel — triggers the server-side AI debrief pipeline.
+ * Calls the `ai-debrief` Supabase Edge Function (secure — no API key in browser).
+ */
 import { useState } from 'react'
-import { createCouncilGraph, type CouncilState } from '@/lib/agents'
+import { supabase } from '@/lib/supabase'
 import type { ChessMove } from '@/types'
 
-export function MasterCouncilPanel({ moves, analysis }: { moves: ChessMove[], analysis: any[] }) {
+export function MasterCouncilPanel({
+  moves,
+  analysis,
+}: {
+  moves: ChessMove[]
+  analysis: any[]
+}) {
   const [running, setRunning] = useState(false)
   const [complete, setComplete] = useState(false)
   const [status, setStatus] = useState('Idle')
   const [report, setReport] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   const handleRunCouncil = async () => {
     setRunning(true)
-    setStatus('Engine Analyst reviewing...')
+    setError(null)
+    setStatus('Assembling the Master Council...')
+
     try {
-      const graph = createCouncilGraph()
-      const initialState: Partial<CouncilState> = { moves, analysis }
-      const finalState = await graph.invoke(initialState)
-      setReport(finalState.finalDebrief || 'Council failed to synthesize a report.')
+      setStatus('Engine Analyst reviewing...')
+      const { data, error: fnError } = await supabase.functions.invoke('ai-debrief', {
+        body: { moves, analysis },
+      })
+
+      if (fnError) throw new Error(fnError.message)
+      if (!data?.finalDebrief) throw new Error('No debrief returned from council.')
+
+      setReport(data.finalDebrief as string)
       setStatus('Complete')
       setComplete(true)
     } catch (e: any) {
-      console.error(e)
-      setStatus(`Error: ${e.message}`)
+      console.error('[MasterCouncil]', e)
+      setError(e.message ?? 'Unknown error')
+      setStatus('Error')
     } finally {
       setRunning(false)
     }
@@ -40,8 +59,8 @@ export function MasterCouncilPanel({ moves, analysis }: { moves: ChessMove[], an
         <div className="space-y-3">
           {report
             .split('\n')
-            .map(p => p.trim())
-            .filter(p => p.length > 0)
+            .map((p) => p.trim())
+            .filter((p) => p.length > 0)
             .map((paragraph, idx) => (
               <p key={idx} className="text-sm leading-relaxed text-chess-text">
                 {paragraph}
@@ -58,8 +77,15 @@ export function MasterCouncilPanel({ moves, analysis }: { moves: ChessMove[], an
         Master Council
       </h3>
       <p className="mt-2 text-sm text-chess-muted">
-        Five specialized AI agents debate your playstyle, cite historical games, and generate a concise debrief.
+        Five specialized AI agents debate your playstyle, cite historical games, and generate a
+        concise debrief. Powered by Groq + LangGraph.
       </p>
+
+      {error && (
+        <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-mono text-red-400">
+          {error}
+        </p>
+      )}
 
       <div className="mt-5">
         {running ? (
@@ -69,7 +95,8 @@ export function MasterCouncilPanel({ moves, analysis }: { moves: ChessMove[], an
           </div>
         ) : (
           <button
-            onClick={handleRunCouncil}
+            id="master-council-btn"
+            onClick={() => void handleRunCouncil()}
             className="rounded-lg border border-chess-gold/40 bg-chess-gold/10 px-6 py-2.5 font-mono text-sm text-chess-gold transition-colors hover:bg-chess-gold/20"
           >
             Generate Debrief

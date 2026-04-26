@@ -98,6 +98,11 @@ export interface ProfileRecord {
   games_won: number
   games_lost: number
   games_drawn: number
+  is_pro?: boolean
+  coins?: number
+  owned_themes?: string[]
+  stripe_customer_id?: string | null
+  stripe_subscription_id?: string | null
   created_at?: string
 }
 

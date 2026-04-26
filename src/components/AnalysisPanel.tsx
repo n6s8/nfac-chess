@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import type { GameState, MistakeType, MoveAnalysis } from '@/types'
-import { ProModal, useProStatus } from './ProModal'
 import { MasterCouncilPanel } from './MasterCouncilPanel'
 
 interface Props {
   state: GameState
   onRunAnalysis: () => void
   onReset?: () => void
+  isPro?: boolean
+  onUpgradeRequested?: () => void
 }
 
 const TYPE_META: Record<
@@ -35,10 +36,8 @@ const TYPE_META: Record<
   },
 }
 
-export function AnalysisPanel({ state, onRunAnalysis, onReset }: Props) {
+export function AnalysisPanel({ state, onRunAnalysis, onReset, isPro = false, onUpgradeRequested }: Props) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const { isPro, upgradeToPro } = useProStatus()
-  const [proModalOpen, setProModalOpen] = useState(false)
 
   const gameOver = state.result !== null || state.status === 'draw' || state.status === 'checkmate'
   const issues = useMemo(
@@ -77,29 +76,33 @@ export function AnalysisPanel({ state, onRunAnalysis, onReset }: Props) {
         <button
           type="button"
           onClick={onRunAnalysis}
-          className="w-full rounded-lg bg-chess-gold px-4 py-3 text-sm font-display tracking-wider text-chess-bg transition-colors hover:bg-chess-gold-dim"
+          className="w-full rounded-lg bg-chess-gold px-4 py-3 text-sm font-display tracking-wider text-chess-bg transition-colors hover:bg-yellow-400"
         >
           Analyse Game
         </button>
       ) : null}
 
+      {/* Master Council — Pro gate */}
       {gameOver && !state.isAnalyzing ? (
-        <div className="mb-4 mt-2">
+        <div className="mb-2">
           {isPro && state.analysis.length > 0 ? (
-              <MasterCouncilPanel moves={state.moves} analysis={state.analysis} />
+            <MasterCouncilPanel moves={state.moves} analysis={state.analysis} />
           ) : isPro && state.analysis.length === 0 ? (
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-lg text-center">
-                  <p className="text-emerald-400 font-mono text-sm">👑 Pro Activated: Click "Analyse Game" above first to gather data for your Master Council!</p>
-              </div>
+            <div className="rounded-xl border border-chess-gold/20 bg-chess-gold/5 p-4 text-center">
+              <p className="font-mono text-xs text-chess-muted">
+                👑 Pro: Click "Analyse Game" above first, then run Master Council.
+              </p>
+            </div>
           ) : (
-              <button 
-                  onClick={() => setProModalOpen(true)}
-                  className="w-full rounded-lg bg-gradient-to-r from-emerald-500/80 to-emerald-700/80 border border-emerald-400/50 px-4 py-4 text-sm font-display tracking-wider text-white transition-all hover:scale-[1.01] shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-2"
-              >
-                  <span>✨</span> Generate Master Council Debrief (Pro Only)
-              </button>
+            <button
+              id="master-council-upgrade-btn"
+              onClick={onUpgradeRequested}
+              className="w-full rounded-lg border border-chess-gold/30 bg-gradient-to-r from-chess-gold/10 to-chess-gold/5 px-4 py-3.5 text-sm font-mono uppercase tracking-wide text-chess-gold transition-all hover:bg-chess-gold/20 flex items-center justify-center gap-2"
+            >
+              <span>⚡</span>
+              <span>Unlock Master Council Debrief — Pro</span>
+            </button>
           )}
-          <ProModal open={proModalOpen} onClose={() => setProModalOpen(false)} onUpgrade={upgradeToPro} />
         </div>
       ) : null}
 
@@ -109,7 +112,7 @@ export function AnalysisPanel({ state, onRunAnalysis, onReset }: Props) {
             <span>
               {state.analysisProgress < 70
                 ? 'Stockfish is scoring each move...'
-                : 'Groq is explaining the critical mistakes...'}
+                : 'AI is explaining the critical mistakes...'}
             </span>
             <span>{state.analysisProgress}%</span>
           </div>
@@ -167,7 +170,9 @@ export function AnalysisPanel({ state, onRunAnalysis, onReset }: Props) {
                         <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide ${meta.classes}`}>
                           {meta.label}
                         </span>
-                        <p className="mt-2 text-xs text-chess-blunder">{Math.abs(item.evaluationDiff / 100).toFixed(1)} pawns</p>
+                        <p className="mt-2 text-xs text-chess-blunder">
+                          {Math.abs(item.evaluationDiff / 100).toFixed(1)} pawns
+                        </p>
                       </div>
                     </div>
                   </button>

@@ -4,6 +4,12 @@ node_modules/
 # build
 dist/
 build/
+dist-ssr
+*.local
+supabase.exe
+
+# testing
+/coverage
 
 # env
 .env

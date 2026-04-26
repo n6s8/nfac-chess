@@ -1,46 +1,63 @@
+/**
+ * ProModal — AlgoChess Pro upgrade flow.
+ *
+ * Shows the feature list, then redirects to a real Stripe Checkout session
+ * created via our secure Edge Function. The success state is handled on
+ * return via the `?pro=success` URL param (polled in useAuthSession refresh).
+ */
 import { useState } from 'react'
+import { createStripeCheckoutSession } from '@/lib/stripe'
+import type { AuthUser } from '@/types'
 
-export function useProStatus() {
-  const [isPro, setIsPro] = useState(() => {
-    return localStorage.getItem('algochess_pro') === 'true'
-  })
+// ─── Hook ────────────────────────────────────────────────────────────────────
 
-  const upgradeToPro = () => {
-    localStorage.setItem('algochess_pro', 'true')
-    setIsPro(true)
+export function useProStatus(user: AuthUser | null) {
+  return {
+    isPro: user?.is_pro ?? false,
   }
-
-  return { isPro, upgradeToPro }
 }
+
+// ─── Modal ───────────────────────────────────────────────────────────────────
+
+const PRO_FEATURES = [
+  ['Master Council Debrief', '5-agent LangGraph pipeline — post-game AI analysis'],
+  ['RAG Historian', 'Your moves mapped to historical grandmaster games'],
+  ['Psychological Coach', 'Cognitive pattern diagnosis after every session'],
+  ['Unlimited AI Debriefs', 'No daily caps — analyze every game you play'],
+  ['Carbon Fiber Board Theme', 'Exclusive Pro-only board skin in the Store'],
+] as const
 
 export function ProModal({
   open,
   onClose,
-  onUpgrade,
+  user,
 }: {
   open: boolean
   onClose: () => void
-  onUpgrade: () => void
+  user: AuthUser | null
 }) {
-  const [step, setStep] = useState<'plan' | 'checkout' | 'success'>('plan')
   const [loading, setLoading] = useState(false)
-  const [card, setCard] = useState('4242 4242 4242 4242')
-  const [expiry, setExpiry] = useState('12/26')
-  const [cvc, setCvc] = useState('424')
+  const [error, setError] = useState<string | null>(null)
 
   function handleClose() {
-    setStep('plan')
+    setError(null)
     setLoading(false)
     onClose()
   }
 
-  function handleCheckout() {
+  async function handleCheckout() {
+    if (!user) return
+    setError(null)
     setLoading(true)
-    setTimeout(() => {
+    try {
+      const url = await createStripeCheckoutSession(user.id)
+      // Redirect to Stripe — user returns to /?pro=success on completion
+      window.location.href = url
+    } catch (err) {
+      console.error('[ProModal] checkout error:', err)
+      setError('Payment initialization failed. Please try again.')
       setLoading(false)
-      setStep('success')
-      onUpgrade()
-    }, 1800)
+    }
   }
 
   if (!open) return null
@@ -58,6 +75,7 @@ export function ProModal({
             <span className="font-display text-base text-chess-text">AlgoChess Pro</span>
           </div>
           <button
+            id="pro-modal-close"
             onClick={handleClose}
             className="rounded-md p-1 text-chess-muted transition-colors hover:bg-chess-panel hover:text-chess-text"
           >
@@ -67,140 +85,68 @@ export function ProModal({
           </button>
         </div>
 
-        {/* Plan step */}
-        {step === 'plan' && (
-          <div className="p-6">
-            <div className="mb-5 rounded-xl border border-chess-gold/20 bg-chess-gold/5 p-4">
-              <div className="flex items-baseline justify-between">
-                <p className="font-display text-xl text-chess-gold">$4.99</p>
-                <p className="font-mono text-xs text-chess-muted">/ month</p>
-              </div>
-              <p className="mt-1 text-xs text-chess-muted">Cancel anytime. Instant access.</p>
+        <div className="p-6">
+          {/* Pricing */}
+          <div className="mb-5 rounded-xl border border-chess-gold/20 bg-chess-gold/5 p-4">
+            <div className="flex items-baseline justify-between">
+              <p className="font-display text-2xl text-chess-gold">$4.99</p>
+              <p className="font-mono text-xs text-chess-muted">/ month</p>
             </div>
-
-            <ul className="mb-6 space-y-3">
-              {[
-                ['Master Council Debrief', '5-agent LangGraph pipeline post-game analysis'],
-                ['RAG Historian', 'Your moves mapped to historical grandmaster games'],
-                ['Psychological Coach', 'Cognitive pattern diagnosis after every session'],
-                ['Priority Groq Access', 'Faster LLM inference, no queue'],
-              ].map(([title, desc]) => (
-                <li key={title} className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-chess-good/40 bg-chess-good/10 text-[10px] text-chess-good">
-                    ✓
-                  </span>
-                  <div>
-                    <p className="text-sm text-chess-text">{title}</p>
-                    <p className="text-xs text-chess-muted">{desc}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            <button
-              onClick={() => setStep('checkout')}
-              className="w-full rounded-lg bg-chess-gold py-3 font-mono text-sm font-bold text-chess-bg transition-colors hover:bg-yellow-400"
-            >
-              Continue to Payment
-            </button>
-            <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-widest text-chess-muted">
-              Powered by Stripe
-            </p>
+            <p className="mt-1 text-xs text-chess-muted">Cancel anytime. Instant access. Powered by Stripe.</p>
           </div>
-        )}
 
-        {/* Checkout step */}
-        {step === 'checkout' && (
-          <div className="p-6">
-            <p className="mb-4 font-mono text-xs uppercase tracking-widest text-chess-muted">
-              Payment details
+          {/* Feature list */}
+          <ul className="mb-6 space-y-3">
+            {PRO_FEATURES.map(([title, desc]) => (
+              <li key={title} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-chess-good/40 bg-chess-good/10 text-[10px] text-chess-good">
+                  ✓
+                </span>
+                <div>
+                  <p className="text-sm text-chess-text">{title}</p>
+                  <p className="text-xs text-chess-muted">{desc}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {/* Error */}
+          {error && (
+            <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-mono text-red-400">
+              {error}
             </p>
+          )}
 
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1.5 block font-mono text-xs text-chess-muted">Card number</label>
-                <input
-                  value={card}
-                  onChange={(e) => setCard(e.target.value)}
-                  className="w-full rounded-lg border border-chess-border bg-chess-panel px-4 py-3 font-mono text-sm text-chess-text focus:border-chess-gold/40 focus:outline-none"
-                  placeholder="1234 5678 9012 3456"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block font-mono text-xs text-chess-muted">Expiry</label>
-                  <input
-                    value={expiry}
-                    onChange={(e) => setExpiry(e.target.value)}
-                    className="w-full rounded-lg border border-chess-border bg-chess-panel px-4 py-3 font-mono text-sm text-chess-text focus:border-chess-gold/40 focus:outline-none"
-                    placeholder="MM/YY"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block font-mono text-xs text-chess-muted">CVC</label>
-                  <input
-                    value={cvc}
-                    onChange={(e) => setCvc(e.target.value)}
-                    className="w-full rounded-lg border border-chess-border bg-chess-panel px-4 py-3 font-mono text-sm text-chess-text focus:border-chess-gold/40 focus:outline-none"
-                    placeholder="123"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-lg border border-chess-border bg-chess-panel p-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-chess-muted">AlgoChess Pro · Monthly</span>
-                <span className="font-mono font-bold text-chess-gold">$4.99</span>
-              </div>
-            </div>
-
+          {/* CTA */}
+          {!user ? (
+            <p className="text-center text-sm text-chess-muted">Sign in to upgrade.</p>
+          ) : (
             <button
-              onClick={handleCheckout}
+              id="pro-checkout-btn"
+              onClick={() => void handleCheckout()}
               disabled={loading}
-              className="mt-4 w-full rounded-lg bg-chess-gold py-3 font-mono text-sm font-bold text-chess-bg transition-colors hover:bg-yellow-400 disabled:opacity-70"
+              className="w-full rounded-lg bg-chess-gold py-3 font-mono text-sm font-bold text-chess-bg transition-colors hover:bg-yellow-400 disabled:opacity-70"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-chess-bg border-t-transparent" />
-                  Processing...
+                  Redirecting to Stripe…
                 </span>
               ) : (
-                'Pay $4.99 / month'
+                'Upgrade to Pro — $4.99 / mo'
               )}
             </button>
+          )}
 
-            <div className="mt-3 flex items-center justify-center gap-2 text-chess-muted">
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-              </svg>
-              <p className="font-mono text-[10px] uppercase tracking-widest">
-                256-bit SSL · Stripe Secure Checkout
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Success step */}
-        {step === 'success' && (
-          <div className="p-8 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-chess-good/40 bg-chess-good/10">
-              <svg className="h-8 w-8 text-chess-good" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <h2 className="font-display text-xl text-chess-gold">You are now Pro</h2>
-            <p className="mt-2 text-sm text-chess-muted">
-              Master Council Debrief and all Pro features are now unlocked.
+          <div className="mt-3 flex items-center justify-center gap-2 text-chess-muted">
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+            <p className="font-mono text-[10px] uppercase tracking-widest">
+              256-bit SSL · Stripe Secure Checkout
             </p>
-            <button
-              onClick={handleClose}
-              className="mt-6 w-full rounded-lg border border-chess-gold/30 bg-chess-gold/10 py-3 font-mono text-sm text-chess-gold transition-colors hover:bg-chess-gold/20"
-            >
-              Start playing
-            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

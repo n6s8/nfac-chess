@@ -20,6 +20,11 @@ create table if not exists public.profiles (
   games_won integer not null default 0,
   games_lost integer not null default 0,
   games_drawn integer not null default 0,
+  is_pro boolean not null default false,
+  coins integer not null default 0,
+  owned_themes text[] not null default '{classic}',
+  stripe_customer_id text,
+  stripe_subscription_id text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -32,6 +37,11 @@ alter table public.profiles add column if not exists rating integer not null def
 alter table public.profiles add column if not exists games_won integer not null default 0;
 alter table public.profiles add column if not exists games_lost integer not null default 0;
 alter table public.profiles add column if not exists games_drawn integer not null default 0;
+alter table public.profiles add column if not exists is_pro boolean not null default false;
+alter table public.profiles add column if not exists coins integer not null default 0;
+alter table public.profiles add column if not exists owned_themes text[] not null default '{classic}';
+alter table public.profiles add column if not exists stripe_customer_id text;
+alter table public.profiles add column if not exists stripe_subscription_id text;
 alter table public.profiles add column if not exists created_at timestamptz not null default now();
 alter table public.profiles add column if not exists updated_at timestamptz not null default now();
 
@@ -259,21 +269,24 @@ begin
       if p_white_player_id is not null then
         update public.profiles
         set games_drawn = games_drawn + 1,
-            rating = rating + 4
+            rating = rating + 4,
+            coins = coins + 5
         where id = p_white_player_id;
       end if;
 
       if p_black_player_id is not null then
         update public.profiles
         set games_drawn = games_drawn + 1,
-            rating = rating + 4
+            rating = rating + 4,
+            coins = coins + 5
         where id = p_black_player_id;
       end if;
     else
       if p_winner_id is not null then
         update public.profiles
         set games_won = games_won + 1,
-            rating = rating + 16
+            rating = rating + 16,
+            coins = coins + 10
         where id = p_winner_id;
       end if;
 
@@ -389,3 +402,67 @@ create policy "challenges_insert" on public.friend_challenges for insert
   with check (auth.uid() = from_user_id);
 create policy "challenges_update" on public.friend_challenges for update
   using (auth.uid() = to_user_id);
+
+-- ─── Shop RPC ────────────────────────────────────────────────────────────────
+
+create or replace function public.purchase_theme(
+  p_user_id uuid,
+  p_theme_id text,
+  p_price integer
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_coins integer;
+  v_owned text[];
+begin
+  select coins, owned_themes
+  into v_coins, v_owned
+  from public.profiles
+  where id = p_user_id
+  for update;
+
+  if v_coins is null then
+    raise exception 'Profile not found';
+  end if;
+
+  if v_coins < p_price then
+    raise exception 'Insufficient coins';
+  end if;
+
+  if p_theme_id = any(v_owned) then
+    raise exception 'Theme already owned';
+  end if;
+
+  update public.profiles
+  set coins = coins - p_price,
+      owned_themes = array_append(owned_themes, p_theme_id)
+  where id = p_user_id
+  returning coins, owned_themes
+  into v_coins, v_owned;
+
+  return jsonb_build_object('coins', v_coins, 'owned_themes', v_owned);
+end;
+$$;
+
+-- ─── Stripe webhook helper: activate Pro ─────────────────────────────────────
+
+create or replace function public.activate_pro(
+  p_user_id uuid,
+  p_stripe_customer_id text default null,
+  p_stripe_subscription_id text default null
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update public.profiles
+  set is_pro = true,
+      stripe_customer_id = coalesce(p_stripe_customer_id, stripe_customer_id),
+      stripe_subscription_id = coalesce(p_stripe_subscription_id, stripe_subscription_id)
+  where id = p_user_id;
+end;
+$$;

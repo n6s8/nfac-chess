@@ -54,6 +54,15 @@ function normalizeProfile(record: Record<string, unknown>): ProfileRecord {
     games_won: typeof record.games_won === 'number' ? record.games_won : 0,
     games_lost: typeof record.games_lost === 'number' ? record.games_lost : 0,
     games_drawn: typeof record.games_drawn === 'number' ? record.games_drawn : 0,
+    is_pro: typeof record.is_pro === 'boolean' ? record.is_pro : false,
+    coins: typeof record.coins === 'number' ? record.coins : 0,
+    owned_themes: Array.isArray(record.owned_themes)
+      ? (record.owned_themes as string[])
+      : ['classic'],
+    stripe_customer_id:
+      typeof record.stripe_customer_id === 'string' ? record.stripe_customer_id : null,
+    stripe_subscription_id:
+      typeof record.stripe_subscription_id === 'string' ? record.stripe_subscription_id : null,
     created_at: typeof record.created_at === 'string' ? record.created_at : undefined,
   }
 }
@@ -210,6 +219,11 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     games_won: profile?.games_won ?? 0,
     games_lost: profile?.games_lost ?? 0,
     games_drawn: profile?.games_drawn ?? 0,
+    is_pro: profile?.is_pro ?? false,
+    coins: profile?.coins ?? 0,
+    owned_themes: profile?.owned_themes ?? ['classic'],
+    stripe_customer_id: profile?.stripe_customer_id ?? null,
+    stripe_subscription_id: profile?.stripe_subscription_id ?? null,
     created_at: profile?.created_at,
   }
 }
@@ -672,3 +686,61 @@ export async function getPendingChallenges(userId: string): Promise<FriendChalle
   if (error) throw error
   return (data ?? []) as FriendChallengeRecord[]
 }
+
+// ─── Shop & Economy ───────────────────────────────────────────────────────────
+
+/** Purchase a board theme by deducting coins from DB and adding theme to owned_themes. */
+export async function purchaseTheme(
+  userId: string,
+  themeId: string,
+  price: number
+): Promise<{ coins: number; owned_themes: string[] }> {
+  requireSupabase()
+
+  // Deduct coins and append theme atomically via RPC
+  const { data, error } = await supabase.rpc('purchase_theme', {
+    p_user_id: userId,
+    p_theme_id: themeId,
+    p_price: price,
+  })
+
+  if (error) throw error
+  return data as { coins: number; owned_themes: string[] }
+}
+
+/** Get live coin balance + owned themes for a user from Supabase. */
+export async function getShopProfile(
+  userId: string
+): Promise<{ coins: number; owned_themes: string[]; is_pro: boolean }> {
+  if (!isSupabaseConfigured) return { coins: 0, owned_themes: ['classic'], is_pro: false }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('coins, owned_themes, is_pro')
+    .eq('id', userId)
+    .single()
+
+  if (error) throw error
+  return {
+    coins: typeof data.coins === 'number' ? data.coins : 0,
+    owned_themes: Array.isArray(data.owned_themes) ? data.owned_themes : ['classic'],
+    is_pro: typeof data.is_pro === 'boolean' ? data.is_pro : false,
+  }
+}
+
+/** Activate Pro for a user — called after successful Stripe webhook. */
+export async function activateProMembership(
+  userId: string,
+  stripeCustomerId?: string,
+  stripeSubscriptionId?: string
+): Promise<void> {
+  requireSupabase()
+
+  const patch: Record<string, unknown> = { is_pro: true }
+  if (stripeCustomerId) patch.stripe_customer_id = stripeCustomerId
+  if (stripeSubscriptionId) patch.stripe_subscription_id = stripeSubscriptionId
+
+  const { error } = await supabase.from('profiles').update(patch).eq('id', userId)
+  if (error) throw error
+}
+

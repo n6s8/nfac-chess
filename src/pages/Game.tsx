@@ -14,6 +14,7 @@ interface Props {
   onPreferencesChange: (patch: Partial<ThemePreferences>) => void
   onAuthRequested: () => void
   onCreateRoom: () => void
+  onUpgradeRequested: () => void
   creatingRoom: boolean
 }
 
@@ -23,6 +24,7 @@ export function GamePage({
   onPreferencesChange,
   onAuthRequested,
   onCreateRoom,
+  onUpgradeRequested,
   creatingRoom,
 }: Props) {
   const { state, onPlayerMove, runAnalysis, reset, resign, offerDraw, inCheck, turn } = useGame(
@@ -148,7 +150,13 @@ export function GamePage({
 
           {/* Analysis panel */}
           <div className="rounded-xl border border-chess-border bg-chess-panel p-4">
-            <AnalysisPanel state={state} onRunAnalysis={runAnalysis} onReset={reset} />
+            <AnalysisPanel
+              state={state}
+              onRunAnalysis={runAnalysis}
+              onReset={reset}
+              isPro={user?.is_pro ?? false}
+              onUpgradeRequested={onUpgradeRequested}
+            />
           </div>
 
           {/* Thinking style - shown after analysis */}

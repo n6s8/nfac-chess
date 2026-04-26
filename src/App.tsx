@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AuthModal } from '@/components/AuthModal'
 import { CreateRoomModal } from '@/components/CreateRoomModal'
+import { ProModal } from '@/components/ProModal'
 import { useAuthSession } from '@/hooks/useAuthSession'
 import { useThemePreferences } from '@/hooks/useThemePreferences'
 import { createGameRoom, signOut } from '@/lib/supabase'
@@ -24,11 +25,29 @@ export default function App() {
 
 function AlgoChessApp() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user, refresh } = useAuthSession()
   const { preferences, updatePreferences } = useThemePreferences()
   const [authOpen, setAuthOpen] = useState(false)
   const [createRoomOpen, setCreateRoomOpen] = useState(false)
+  const [proOpen, setProOpen] = useState(false)
   const [creatingRoom, setCreatingRoom] = useState(false)
+
+  // Handle return from Stripe Checkout
+  useEffect(() => {
+    const proParam = searchParams.get('pro')
+    if (proParam === 'success') {
+      // Small delay to allow the webhook to hit Supabase
+      const timer = setTimeout(async () => {
+        await refresh()
+        // Optional: second refresh after another 2 seconds just in case
+        setTimeout(() => void refresh(), 2000)
+      }, 1500)
+
+      setSearchParams({}, { replace: true })
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams, refresh, setSearchParams])
 
   async function handleCreateRoom(timeControl: TimeControlKey = 'blitz') {
     if (!user) {
@@ -46,6 +65,8 @@ function AlgoChessApp() {
       setCreatingRoom(false)
     }
   }
+
+  const isPro = user?.is_pro ?? false
 
   return (
     <div className="min-h-screen bg-chess-bg text-chess-text">
@@ -69,6 +90,18 @@ function AlgoChessApp() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Upgrade to Pro CTA — hidden if already pro */}
+            {user && !isPro && (
+              <button
+                id="upgrade-pro-btn"
+                type="button"
+                onClick={() => setProOpen(true)}
+                className="rounded-lg border border-chess-gold bg-chess-gold/15 px-4 py-2 text-xs font-mono uppercase tracking-wide text-chess-gold transition-all hover:bg-chess-gold hover:text-chess-bg"
+              >
+                ⚡ Upgrade to Pro
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
@@ -86,16 +119,16 @@ function AlgoChessApp() {
 
             {user ? (
               <div className="flex items-center gap-3">
-                {/* Coins indicator */}
+                {/* Coins indicator — live from DB */}
                 <div className="hidden rounded-lg border border-chess-border bg-chess-panel px-3 py-1.5 sm:flex items-center gap-1.5">
                   <span className="font-mono text-xs text-chess-gold font-bold">
-                    {localStorage.getItem('algochess_coins') ?? '0'}
+                    {user.coins ?? 0}
                   </span>
                   <span className="font-mono text-[10px] uppercase tracking-wide text-chess-muted">coins</span>
                 </div>
 
                 {/* Pro badge */}
-                {localStorage.getItem('algochess_pro') === 'true' && (
+                {isPro && (
                   <span className="rounded-full border border-chess-gold/40 bg-chess-gold/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-chess-gold">
                     Pro
                   </span>
@@ -141,6 +174,7 @@ function AlgoChessApp() {
               onPreferencesChange={updatePreferences}
               onAuthRequested={() => setAuthOpen(true)}
               onCreateRoom={() => setCreateRoomOpen(true)}
+              onUpgradeRequested={() => setProOpen(true)}
               creatingRoom={creatingRoom}
             />
           }
@@ -173,7 +207,13 @@ function AlgoChessApp() {
         />
         <Route
           path="/shop"
-          element={<ShopPage user={user} onAuthRequested={() => setAuthOpen(true)} />}
+          element={
+            <ShopPage
+              user={user}
+              onAuthRequested={() => setAuthOpen(true)}
+              onUpgradeRequested={() => setProOpen(true)}
+            />
+          }
         />
         <Route path="/replay/:id" element={<ReplayRoute preferences={preferences} />} />
       </Routes>
@@ -190,6 +230,11 @@ function AlgoChessApp() {
         onClose={() => setCreateRoomOpen(false)}
         onCreate={handleCreateRoom}
         loading={creatingRoom}
+      />
+      <ProModal
+        open={proOpen}
+        onClose={() => setProOpen(false)}
+        user={user}
       />
     </div>
   )

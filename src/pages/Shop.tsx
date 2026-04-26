@@ -1,14 +1,21 @@
-import { useState } from 'react'
+/**
+ * Shop page — server-side economy.
+ * Coins and owned themes are stored in the Supabase `profiles` table.
+ * Purchases use the `purchase_theme` RPC for atomic transactions.
+ */
+import { useEffect, useState } from 'react'
+import { getShopProfile, purchaseTheme } from '@/lib/supabase'
 import type { AuthUser, BoardTheme } from '@/types'
 
 interface ShopItem {
-  id: BoardTheme | 'neon_hacker' | 'dracula' | 'matrix'
+  id: BoardTheme | 'neon_hacker' | 'dracula' | 'matrix' | 'carbon_fiber'
   name: string
   description: string
   price: number
   preview: { light: string; dark: string }
   gradient: string
   badge?: string
+  proOnly?: boolean
 }
 
 const SHOP_ITEMS: ShopItem[] = [
@@ -20,6 +27,15 @@ const SHOP_ITEMS: ShopItem[] = [
     preview: { light: '#F0D9B5', dark: '#B58863' },
     gradient: 'from-amber-800/20 to-amber-600/20',
     badge: 'Free',
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal',
+    description: 'Greyscale. No distractions. Pure chess.',
+    price: 30,
+    preview: { light: '#c8c8c8', dark: '#484848' },
+    gradient: 'from-slate-400/20 to-slate-700/20',
+    badge: '30 coins',
   },
   {
     id: 'neon_hacker',
@@ -49,52 +65,55 @@ const SHOP_ITEMS: ShopItem[] = [
     badge: '100 coins',
   },
   {
-    id: 'minimal',
-    name: 'Minimal',
-    description: 'Greyscale. No distractions. Pure chess.',
-    price: 30,
-    preview: { light: '#c8c8c8', dark: '#484848' },
-    gradient: 'from-slate-400/20 to-slate-700/20',
-    badge: '30 coins',
+    id: 'carbon_fiber',
+    name: 'Carbon Fiber',
+    description: 'Exclusive Pro-only theme. Deep graphite weave pattern.',
+    price: 0,
+    preview: { light: '#2c2c2c', dark: '#1a1a1a' },
+    gradient: 'from-zinc-600/20 to-zinc-900/20',
+    badge: 'Pro Only',
+    proOnly: true,
   },
 ]
-
-// Persist owned themes in localStorage (mock — would be DB in production)
-function getOwnedThemes(): Set<string> {
-  try {
-    const raw = localStorage.getItem('algochess_owned_themes')
-    return new Set(raw ? JSON.parse(raw) : ['classic'])
-  } catch {
-    return new Set(['classic'])
-  }
-}
-
-function saveOwnedThemes(themes: Set<string>) {
-  localStorage.setItem('algochess_owned_themes', JSON.stringify([...themes]))
-}
-
-function getCoins(): number {
-  return parseInt(localStorage.getItem('algochess_coins') ?? '0', 10)
-}
-
-function setCoins(n: number) {
-  localStorage.setItem('algochess_coins', String(n))
-}
 
 interface Props {
   user: AuthUser | null
   onAuthRequested: () => void
+  onUpgradeRequested: () => void
 }
 
-export function ShopPage({ user, onAuthRequested }: Props) {
-  const [owned, setOwned] = useState<Set<string>>(getOwnedThemes)
-  const [coins, setCoinState] = useState(getCoins)
+export function ShopPage({ user, onAuthRequested, onUpgradeRequested }: Props) {
+  const [coins, setCoins] = useState(user?.coins ?? 0)
+  const [owned, setOwned] = useState<Set<string>>(
+    new Set(user?.owned_themes ?? ['classic'])
+  )
+  const [isPro, setIsPro] = useState(user?.is_pro ?? false)
   const [purchasing, setPurchasing] = useState<string | null>(null)
   const [justBought, setJustBought] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  function handlePurchase(item: ShopItem) {
+  // Sync fresh data from Supabase on mount
+  useEffect(() => {
+    if (!user) return
+    getShopProfile(user.id)
+      .then(({ coins: c, owned_themes: t, is_pro: pro }) => {
+        setCoins(c)
+        setOwned(new Set(t))
+        setIsPro(pro)
+      })
+      .catch((err) => {
+        console.error('[shop] load error:', err)
+        setLoadError('Failed to load shop data. Using cached values.')
+      })
+  }, [user])
+
+  async function handlePurchase(item: ShopItem) {
     if (item.price === 0) return
     if (owned.has(item.id)) return
+    if (item.proOnly && !isPro) {
+      onUpgradeRequested()
+      return
+    }
     if (coins < item.price) return
     if (!user) {
       onAuthRequested()
@@ -102,17 +121,17 @@ export function ShopPage({ user, onAuthRequested }: Props) {
     }
 
     setPurchasing(item.id)
-    setTimeout(() => {
-      const newCoins = coins - item.price
-      const newOwned = new Set([...owned, item.id])
-      setCoins(newCoins)
-      saveOwnedThemes(newOwned)
-      setCoinState(newCoins)
-      setOwned(newOwned)
+    try {
+      const result = await purchaseTheme(user.id, item.id, item.price)
+      setCoins(result.coins)
+      setOwned(new Set(result.owned_themes))
       setJustBought(item.id)
-      setPurchasing(null)
       setTimeout(() => setJustBought(null), 2000)
-    }, 800)
+    } catch (err) {
+      console.error('[shop] purchase error:', err)
+    } finally {
+      setPurchasing(null)
+    }
   }
 
   if (!user) {
@@ -125,7 +144,7 @@ export function ShopPage({ user, onAuthRequested }: Props) {
           </p>
           <button
             onClick={onAuthRequested}
-            className="mt-6 rounded-lg bg-chess-gold px-6 py-3 text-sm font-display tracking-wider text-chess-bg transition-colors hover:bg-chess-gold-dim"
+            className="mt-6 rounded-lg bg-chess-gold px-6 py-3 text-sm font-display tracking-wider text-chess-bg transition-colors hover:bg-yellow-400"
           >
             Sign in
           </button>
@@ -151,21 +170,46 @@ export function ShopPage({ user, onAuthRequested }: Props) {
         </div>
       </div>
 
+      {/* Pro upgrade banner */}
+      {!isPro && (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-chess-gold/30 bg-chess-gold/5 p-4">
+          <div>
+            <p className="font-display text-sm text-chess-gold">AlgoChess Pro</p>
+            <p className="text-xs text-chess-muted mt-0.5">
+              Unlock Carbon Fiber theme + unlimited AI debriefs.
+            </p>
+          </div>
+          <button
+            id="shop-upgrade-btn"
+            onClick={onUpgradeRequested}
+            className="rounded-lg bg-chess-gold px-4 py-2 text-xs font-mono font-bold uppercase tracking-wide text-chess-bg transition-colors hover:bg-yellow-400"
+          >
+            ⚡ Upgrade
+          </button>
+        </div>
+      )}
+
+      {loadError && (
+        <p className="mb-4 rounded-lg border border-chess-border bg-chess-panel px-4 py-2 text-xs font-mono text-chess-muted">
+          {loadError}
+        </p>
+      )}
+
       {/* How to earn */}
       <div className="mb-6 rounded-xl border border-chess-border bg-chess-panel p-4">
         <p className="font-mono text-xs uppercase tracking-widest text-chess-muted mb-2">How to earn coins</p>
         <div className="flex flex-wrap gap-4 text-sm text-chess-text">
           <span className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-chess-good" />
-            Win a multiplayer game — <strong className="text-chess-gold ml-1">+10 coins</strong>
+            Win multiplayer — <strong className="text-chess-gold ml-1">+10 coins</strong>
           </span>
           <span className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-chess-muted" />
-            Draw a multiplayer game — <strong className="text-chess-gold ml-1">+5 coins</strong>
+            Draw multiplayer — <strong className="text-chess-gold ml-1">+5 coins</strong>
           </span>
           <span className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-chess-hint" />
-            Win vs AI on Master level — <strong className="text-chess-gold ml-1">+5 coins</strong>
+            Win vs AI Master — <strong className="text-chess-gold ml-1">+5 coins</strong>
           </span>
         </div>
       </div>
@@ -177,6 +221,7 @@ export function ShopPage({ user, onAuthRequested }: Props) {
           const canAfford = coins >= item.price
           const isBuying = purchasing === item.id
           const wasBought = justBought === item.id
+          const isProLocked = item.proOnly && !isPro
 
           return (
             <div
@@ -184,10 +229,12 @@ export function ShopPage({ user, onAuthRequested }: Props) {
               className={`relative overflow-hidden rounded-xl border bg-chess-panel transition-all ${
                 isOwned
                   ? 'border-chess-good/30'
+                  : isProLocked
+                  ? 'border-chess-gold/20'
                   : 'border-chess-border hover:border-chess-gold/30'
               }`}
             >
-              {/* Preview */}
+              {/* Preview board swatch */}
               <div className={`h-28 bg-gradient-to-br ${item.gradient} p-4 flex items-center justify-center gap-1`}>
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="flex flex-col gap-1">
@@ -206,7 +253,11 @@ export function ShopPage({ user, onAuthRequested }: Props) {
 
               {/* Badge */}
               {item.badge && (
-                <span className="absolute right-3 top-3 rounded-full border border-chess-gold/40 bg-chess-bg/80 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-chess-gold backdrop-blur-sm">
+                <span className={`absolute right-3 top-3 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide backdrop-blur-sm ${
+                  item.proOnly
+                    ? 'border-chess-gold/60 bg-chess-gold/20 text-chess-gold'
+                    : 'border-chess-gold/40 bg-chess-bg/80 text-chess-gold'
+                }`}>
                   {item.badge}
                 </span>
               )}
@@ -217,16 +268,36 @@ export function ShopPage({ user, onAuthRequested }: Props) {
                 <p className="mt-1 text-xs leading-relaxed text-chess-muted">{item.description}</p>
 
                 <div className="mt-4">
-                  {item.price === 0 || isOwned ? (
+                  {item.price === 0 && !isProLocked ? (
+                    isOwned ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-chess-good/30 bg-chess-good/10 px-3 py-2 text-xs font-mono uppercase tracking-wide text-chess-good">
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        Owned
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-chess-border px-3 py-2 text-center text-xs font-mono uppercase tracking-wide text-chess-muted">
+                        Free — always available
+                      </div>
+                    )
+                  ) : isOwned ? (
                     <div className="flex items-center gap-2 rounded-lg border border-chess-good/30 bg-chess-good/10 px-3 py-2 text-xs font-mono uppercase tracking-wide text-chess-good">
                       <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                       {wasBought ? 'Purchased!' : 'Owned'}
                     </div>
+                  ) : isProLocked ? (
+                    <button
+                      onClick={onUpgradeRequested}
+                      className="w-full rounded-lg border border-chess-gold/40 bg-chess-gold/10 px-4 py-2.5 text-xs font-mono uppercase tracking-wide text-chess-gold transition-colors hover:bg-chess-gold/20"
+                    >
+                      ⚡ Upgrade to Pro
+                    </button>
                   ) : (
                     <button
-                      onClick={() => handlePurchase(item)}
+                      onClick={() => void handlePurchase(item)}
                       disabled={!canAfford || isBuying}
                       className={`w-full rounded-lg border px-4 py-2.5 text-xs font-mono uppercase tracking-wide transition-colors disabled:cursor-not-allowed ${
                         canAfford
@@ -246,23 +317,6 @@ export function ShopPage({ user, onAuthRequested }: Props) {
             </div>
           )
         })}
-      </div>
-
-      {/* Demo coins button for judges */}
-      <div className="mt-8 rounded-xl border border-chess-border bg-chess-panel p-4 text-center">
-        <p className="text-xs text-chess-muted font-mono mb-3">
-          Demo: Add coins to test the shop
-        </p>
-        <button
-          onClick={() => {
-            const newCoins = coins + 100
-            setCoins(newCoins)
-            setCoinState(newCoins)
-          }}
-          className="rounded-lg border border-chess-border px-4 py-2 text-xs font-mono uppercase tracking-wide text-chess-muted transition-colors hover:border-chess-gold/30 hover:text-chess-gold"
-        >
-          + 100 Demo Coins
-        </button>
       </div>
     </main>
   )
