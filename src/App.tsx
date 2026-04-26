@@ -11,6 +11,8 @@ import { LeaderboardPage } from '@/pages/Leaderboard'
 import { MultiplayerRoomPage } from '@/pages/MultiplayerRoom'
 import { ProfilePage } from '@/pages/Profile'
 import { ReplayPage } from '@/pages/Replay'
+import { FriendsPage } from '@/pages/Friends'
+import { ShopPage } from '@/pages/Shop'
 
 export default function App() {
   return (
@@ -33,9 +35,7 @@ function AlgoChessApp() {
       setAuthOpen(true)
       return
     }
-
     setCreatingRoom(true)
-
     try {
       const room = await createGameRoom(user, timeControl)
       navigate(`/game/${room.id}`)
@@ -59,9 +59,11 @@ function AlgoChessApp() {
               </p>
             </div>
 
-            <nav className="flex flex-wrap items-center gap-2">
+            <nav className="flex flex-wrap items-center gap-1">
               <AppLink to="/">Play</AppLink>
               <AppLink to="/leaderboard">Leaderboard</AppLink>
+              <AppLink to="/friends">Friends</AppLink>
+              <AppLink to="/shop">Store</AppLink>
               <AppLink to="/profile">Profile</AppLink>
             </nav>
           </div>
@@ -74,17 +76,31 @@ function AlgoChessApp() {
                   setAuthOpen(true)
                   return
                 }
-
                 setCreateRoomOpen(true)
               }}
               disabled={creatingRoom}
               className="rounded-lg border border-chess-gold/30 bg-chess-gold/10 px-4 py-2 text-xs font-mono uppercase tracking-wide text-chess-gold transition-colors hover:bg-chess-gold/20 disabled:opacity-60"
             >
-              {creatingRoom ? 'Creating room...' : 'Create room'}
+              {creatingRoom ? 'Creating...' : 'Create room'}
             </button>
 
             {user ? (
               <div className="flex items-center gap-3">
+                {/* Coins indicator */}
+                <div className="hidden rounded-lg border border-chess-border bg-chess-panel px-3 py-1.5 sm:flex items-center gap-1.5">
+                  <span className="font-mono text-xs text-chess-gold font-bold">
+                    {localStorage.getItem('algochess_coins') ?? '0'}
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-wide text-chess-muted">coins</span>
+                </div>
+
+                {/* Pro badge */}
+                {localStorage.getItem('algochess_pro') === 'true' && (
+                  <span className="rounded-full border border-chess-gold/40 bg-chess-gold/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-chess-gold">
+                    Pro
+                  </span>
+                )}
+
                 <div className="rounded-full border border-chess-gold/30 bg-chess-gold/10 px-3 py-1.5 text-xs font-mono text-chess-text">
                   {user.country || 'No country'} | {user.rating}
                 </div>
@@ -152,9 +168,14 @@ function AlgoChessApp() {
           }
         />
         <Route
-          path="/replay/:id"
-          element={<ReplayRoute preferences={preferences} />}
+          path="/friends"
+          element={<FriendsPage user={user} onAuthRequested={() => setAuthOpen(true)} />}
         />
+        <Route
+          path="/shop"
+          element={<ShopPage user={user} onAuthRequested={() => setAuthOpen(true)} />}
+        />
+        <Route path="/replay/:id" element={<ReplayRoute preferences={preferences} />} />
       </Routes>
 
       <AuthModal
