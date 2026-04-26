@@ -195,6 +195,19 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
     return { white: whiteTime, black: Math.max(0, blackTime - elapsed) }
   }, [clockTick, room])
 
+  const pendingDrawOffer = useMemo(() => {
+    if (!room) return null
+    const msgs = room.chat_messages || []
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].message === 'DRAW_OFFER') {
+        const by = msgs[i].sender_id
+        if (msgs.find((m, j) => j > i && String(m.message).startsWith('DRAW_'))) return null
+        return by
+      }
+    }
+    return null
+  }, [room?.chat_messages])
+
   const primePreview = useCallback(async () => {
     if (!room || !role) return
     if (room.status === 'finished') return
@@ -337,9 +350,8 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
 
       setAnalysis(enriched)
       setAnalysisProgress(100)
-
-      if (!finalizeAttemptedRef.current && user?.id === room.created_by) {
-        finalizeAttemptedRef.current = true
+      
+      if (user?.id) {
         const loserId =
           room.result === 'white'
             ? room.black_player_id
@@ -359,7 +371,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
           blackPlayerId: room.black_player_id,
           whitePlayerEmail: room.white_player_email,
           blackPlayerEmail: room.black_player_email,
-        })
+        }).catch(err => console.error('[room] re-sync analysis error:', err))
       }
     } catch (analysisError) {
       console.error('[room] analysis error:', analysisError)
@@ -408,7 +420,49 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
         id: crypto.randomUUID(),
         sender_id: user.id,
         sender_label: user.username || user.email,
-        message: 'offers a draw.',
+        message: 'DRAW_OFFER',
+        created_at: new Date().toISOString(),
+      },
+    ]
+
+    const nextRoom = await sendRoomMessage(room.id, nextMessages)
+    setRoom(nextRoom)
+  }, [room, user])
+
+  const acceptDraw = useCallback(async () => {
+    if (!room || !user || room.status === 'finished') return
+
+    const nextMessages = [
+      ...(room.chat_messages ?? []),
+      {
+        id: crypto.randomUUID(),
+        sender_id: user.id,
+        sender_label: user.username || user.email,
+        message: 'DRAW_ACCEPTED',
+        created_at: new Date().toISOString(),
+      },
+    ]
+
+    const nextRoom = await updateGameRoomState(room.id, {
+      ...room,
+      status: 'finished',
+      result: 'draw',
+      last_move_at: new Date().toISOString(),
+      chat_messages: nextMessages,
+    })
+    setRoom(nextRoom)
+  }, [room, user])
+
+  const declineDraw = useCallback(async () => {
+    if (!room || !user) return
+
+    const nextMessages = [
+      ...(room.chat_messages ?? []),
+      {
+        id: crypto.randomUUID(),
+        sender_id: user.id,
+        sender_label: user.username || user.email,
+        message: 'DRAW_DECLINED',
         created_at: new Date().toISOString(),
       },
     ]
@@ -445,6 +499,36 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
 
     void runAnalysis()
   }, [analysis.length, isAnalyzing, room, runAnalysis])
+
+  useEffect(() => {
+    if (!room || room.status !== 'finished' || !user || user.id !== room.created_by) return
+    if (finalizeAttemptedRef.current) return
+    finalizeAttemptedRef.current = true
+
+    const loserId =
+      room.result === 'white'
+        ? room.black_player_id
+        : room.result === 'black'
+          ? room.white_player_id
+          : null
+
+    void recordMultiplayerResult({
+      roomId: room.id,
+      pgn: room.pgn,
+      moves: room.moves,
+      result: room.result,
+      winnerId: room.winner_id,
+      loserId,
+      analysis: [],
+      whitePlayerId: room.white_player_id,
+      blackPlayerId: room.black_player_id,
+      whitePlayerEmail: room.white_player_email,
+      blackPlayerEmail: room.black_player_email,
+    }).catch(err => {
+      console.error('[room] finalize error:', err)
+      finalizeAttemptedRef.current = false
+    })
+  }, [room, user])
 
   useEffect(() => {
     if (!room || room.status === 'finished') return
@@ -516,6 +600,9 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
     runAnalysis,
     resignGame,
     offerDraw,
+    acceptDraw,
+    declineDraw,
+    pendingDrawOffer,
     sendChatMessage,
     shareUrl:
       roomId && typeof window !== 'undefined' ? `${window.location.origin}/game/${roomId}` : '',

@@ -60,19 +60,21 @@ export function GamePage({
           {/* Board */}
           <div className="rounded-xl border border-chess-border bg-chess-panel/60 p-3 sm:p-4">
             <div
-              className={`mx-auto w-full ${
-                preferences.focusMode ? 'max-w-[1040px]' : 'max-w-[680px]'
+              className={`mx-auto flex w-full justify-center overflow-hidden ${
+                preferences.focusMode ? 'max-w-full md:max-w-[1040px]' : 'max-w-full md:max-w-[680px]'
               }`}
             >
-              <ChessBoardPanel
-                state={extState}
-                onMove={onPlayerMove}
-                inCheck={inCheck}
-                boardTheme={preferences.boardTheme}
-                statusText={statusText}
-                onResign={resign}
-                onOfferDraw={offerDraw}
-              />
+              <div className="w-full">
+                <ChessBoardPanel
+                  state={extState}
+                  onMove={onPlayerMove}
+                  inCheck={inCheck}
+                  boardTheme={preferences.boardTheme}
+                  statusText={statusText}
+                  onResign={resign}
+                  onOfferDraw={offerDraw}
+                />
+              </div>
             </div>
           </div>
 

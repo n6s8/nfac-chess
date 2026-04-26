@@ -305,10 +305,17 @@ export async function listCities(country?: string | null): Promise<string[]> {
   return ['All', ...cities]
 }
 
-export async function saveGame(record: Omit<GameRecord, 'id' | 'created_at'>) {
+export async function saveGame(record: Partial<GameRecord> & Omit<GameRecord, 'id' | 'created_at'>) {
   requireSupabase()
 
-  const { data, error } = await supabase.from('games').insert(record).select('*').single()
+  let query
+  if (record.id) {
+    query = supabase.from('games').update(record).eq('id', record.id)
+  } else {
+    query = supabase.from('games').insert(record)
+  }
+
+  const { data, error } = await query.select('*').single()
   if (error) throw error
 
   return normalizeGameRecord(data)

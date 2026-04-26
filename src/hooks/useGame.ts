@@ -156,10 +156,40 @@ async function updateEloAfterGame(
 export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Intermediate') {
   const [state, dispatch] = useReducer(reducer, initialState)
   const gameRef = useRef<Chess>(new Chess())
+  const gameRecordId = useRef<string | null>(null)
   const isProcessingAi = useRef(false)
   const previewRef = useRef<LiveMovePreview | null>(null)
   const previewInFlightFen = useRef<string | null>(null)
   const levelConfig = getLevelConfig(engineLevel)
+
+  useEffect(() => {
+    if (state.status === 'playing' || !state.result || !user || gameRecordId.current) return
+
+    const thinkingStyle = computeThinkingStyle(state.moves)
+
+    void saveGame({
+      user_id: user.id,
+      room_id: null,
+      mode: 'ai',
+      pgn: getPgn(gameRef.current),
+      moves: state.moves,
+      result: state.result,
+      analysis: state.analysis.length > 0 ? state.analysis : null,
+      winner_id: state.result === state.playerColor ? user.id : null,
+      loser_id: state.result && state.result !== 'draw' && state.result !== state.playerColor ? user.id : null,
+      white_player_id: state.playerColor === 'white' ? user.id : null,
+      black_player_id: state.playerColor === 'black' ? user.id : null,
+      white_player_email: state.playerColor === 'white' ? user.email : 'Stockfish',
+      black_player_email: state.playerColor === 'black' ? user.email : 'Stockfish',
+      metadata: { source: 'single-player', thinkingStyle },
+    })
+      .then((record) => {
+        if (record?.id) {
+          gameRecordId.current = record.id
+        }
+      })
+      .catch((error) => console.error('[useGame] auto-save error:', error))
+  }, [state.status, state.result, state.moves, state.analysis, state.playerColor, user])
 
   const primePlayerPreview = useCallback(async () => {
     const game = gameRef.current
@@ -194,6 +224,21 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
 
       const move = makeMove(game, { from, to, promotion: promotion ?? 'q' })
       if (!move) return false
+
+      const type = classifyMoveStyle(move.san)
+      const mappedTypeString = type === 'minimax' ? 'Strategic' : type.charAt(0).toUpperCase() + type.slice(1)
+      
+      dispatch({
+        type: 'SET_LIVE_INSIGHT',
+        insight: {
+          move: move.san,
+          bestMove: '',
+          evaluationDiff: 0,
+          type,
+          severity: 0,
+          explanation: `This move is ${mappedTypeString}.`,
+        }
+      })
 
       dispatch({ type: 'MOVE', move, fen: getFen(game) })
 
@@ -322,6 +367,7 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
 
       if (user?.id) {
         await saveGame({
+          id: gameRecordId.current ?? undefined,
           user_id: user.id,
           room_id: null,
           mode: 'ai',
@@ -336,6 +382,8 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
           white_player_email: state.playerColor === 'white' ? user.email : 'Stockfish',
           black_player_email: state.playerColor === 'black' ? user.email : 'Stockfish',
           metadata: { source: 'single-player', thinkingStyle },
+        }).then(record => {
+          if (record?.id) gameRecordId.current = record.id
         }).catch((error) => {
           console.error('[useGame] saveGame error:', error)
         })
@@ -348,7 +396,11 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
 
   const resign = useCallback(() => {
     dispatch({ type: 'RESIGN' })
-  }, [])
+    if (user) {
+      const result = state.playerColor === 'white' ? 'black' : 'white'
+      void updateEloAfterGame(user, result, state.playerColor).catch(console.error)
+    }
+  }, [state.playerColor, user])
 
   const offerDraw = useCallback(() => {
     dispatch({ type: 'OFFER_DRAW' })
@@ -368,6 +420,7 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
   const reset = useCallback(() => {
     gameRef.current = new Chess()
     getEngine().newGame()
+    gameRecordId.current = null
     isProcessingAi.current = false
     previewRef.current = null
     previewInFlightFen.current = null

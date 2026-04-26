@@ -33,6 +33,9 @@ export function MultiplayerRoomPage({
     runAnalysis,
     resignGame,
     offerDraw,
+    acceptDraw,
+    declineDraw,
+    pendingDrawOffer,
     sendChatMessage,
     shareUrl,
   } = useGameRoom(roomId, user)
@@ -132,22 +135,38 @@ export function MultiplayerRoomPage({
             <ClockCard label={room.black_player_email ?? 'Black'} value={clockTimes.black} active={room.turn === 'black' && room.status !== 'finished'} />
           </div>
 
+          {pendingDrawOffer && room.status === 'playing' && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-400/40 bg-sky-400/10 p-3">
+              <p className="text-sm text-sky-400">
+                {pendingDrawOffer === user.id ? 'Waiting for opponent to accept draw...' : 'Opponent offered a draw.'}
+              </p>
+              {pendingDrawOffer !== user.id && (
+                <div className="flex gap-2">
+                  <button onClick={() => void acceptDraw()} className="rounded-lg bg-sky-500/20 px-3 py-1.5 text-xs text-sky-300 transition-colors hover:bg-sky-500/30">Accept</button>
+                  <button onClick={() => void declineDraw()} className="rounded-lg border border-sky-500/20 px-3 py-1.5 text-xs text-sky-300 transition-colors hover:bg-sky-500/10">Decline</button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="rounded-xl border border-chess-border bg-chess-panel/60 p-3 sm:p-4">
             <div
-              className={`mx-auto w-full ${
-                preferences.focusMode ? 'max-w-[1040px]' : 'max-w-[680px]'
+              className={`mx-auto flex w-full justify-center overflow-hidden ${
+                preferences.focusMode ? 'max-w-full md:max-w-[1040px]' : 'max-w-full md:max-w-[680px]'
               }`}
             >
-              <ChessBoardPanel
-                state={state}
-                onMove={onPlayerMove}
-                inCheck={false}
-                boardTheme={preferences.boardTheme}
-                orientation={role ?? 'white'}
-                statusText={statusText}
-                onResign={role && room.status === 'playing' ? () => void resignGame() : undefined}
-                onOfferDraw={role && room.status === 'playing' ? () => void offerDraw() : undefined}
-              />
+              <div className="w-full">
+                <ChessBoardPanel
+                  state={state}
+                  onMove={onPlayerMove}
+                  inCheck={false}
+                  boardTheme={preferences.boardTheme}
+                  orientation={role ?? 'white'}
+                  statusText={statusText}
+                  onResign={role && room.status === 'playing' ? () => void resignGame() : undefined}
+                  onOfferDraw={role && room.status === 'playing' && !pendingDrawOffer ? () => void offerDraw() : undefined}
+                />
+              </div>
             </div>
           </div>
 
@@ -201,17 +220,19 @@ export function MultiplayerRoomPage({
               </span>
             </div>
 
-            <div className="custom-scroll max-h-[160px] space-y-2 overflow-y-auto">
-              {(room.chat_messages ?? []).map((message) => (
-                <div key={message.id} className="rounded-lg border border-chess-border bg-chess-surface p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-mono text-chess-gold">{message.sender_label}</p>
-                    <span className="text-[10px] font-mono text-chess-muted">
-                      {new Date(message.created_at).toLocaleTimeString()}
-                    </span>
+            <div className="custom-scroll max-h-32 space-y-2 overflow-y-auto">
+              {(room.chat_messages ?? [])
+                .filter((message) => !String(message.message).startsWith('DRAW_'))
+                .map((message) => (
+                  <div key={message.id} className="rounded-lg border border-chess-border bg-chess-surface p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-mono text-chess-gold">{message.sender_label}</p>
+                      <span className="text-[10px] font-mono text-chess-muted">
+                        {new Date(message.created_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-chess-text">{message.message}</p>
                   </div>
-                  <p className="mt-2 text-sm text-chess-text">{message.message}</p>
-                </div>
               ))}
             </div>
 

@@ -53,17 +53,11 @@ export function ThinkingStylePanel({ profile }: Props) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-xs font-mono uppercase tracking-[0.2em] text-chess-muted">
-            Your Thinking Style
+            Analysis Results
           </p>
           <h3 className="mt-1 font-display text-lg" style={{ color: dominantConfig.color }}>
-            {dominantConfig.emoji} {dominantConfig.label} Player
+            You play like:
           </h3>
-        </div>
-        <div
-          className="rounded-full px-3 py-1 text-xs font-mono"
-          style={{ background: dominantConfig.bg, border: `1px solid ${dominantConfig.border}`, color: dominantConfig.color }}
-        >
-          {dominant[1]}%
         </div>
       </div>
 
@@ -71,20 +65,20 @@ export function ThinkingStylePanel({ profile }: Props) {
         {entries.map(([key, pct]) => {
           const config = STYLE_CONFIG[key]
           return (
-            <div key={key}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-mono text-chess-muted">
-                  {config.emoji} {config.label}
-                </span>
-                <span className="text-xs font-mono" style={{ color: config.color }}>
-                  {pct}%
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-chess-border">
+            <div key={key} className="mb-2">
+              <div className="flex items-center gap-3">
                 <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${pct}%`, backgroundColor: config.color }}
-                />
+                  className="whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-mono"
+                  style={{ background: config.bg, border: `1px solid ${config.border}`, color: config.color }}
+                >
+                  {pct}% {config.label}
+                </div>
+                <div className="h-1.5 w-full flex-1 overflow-hidden rounded-full bg-chess-border">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${pct}%`, backgroundColor: config.color }}
+                  />
+                </div>
               </div>
             </div>
           )

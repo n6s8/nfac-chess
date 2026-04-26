@@ -98,7 +98,7 @@ export function ProfilePage({ user, onAuthRequested, onProfileUpdated }: Props) 
               void upsertProfile({
                 id: user.id,
                 email: user.email,
-                username: username || null,
+                username: username.trim() || null,
                 country: country || null,
                 city: city || null,
               })

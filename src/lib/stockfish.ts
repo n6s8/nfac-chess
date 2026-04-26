@@ -28,6 +28,9 @@ class StockfishEngine {
   private pending: PendingRequest | null = null
   private currentEval: Partial<Evaluation> = {}
   private configuredSkill = -1
+  private stopPromise: Promise<void> | null = null
+  private resolveStop: (() => void) | null = null
+  private isEvaluating = false
 
   constructor() {
     this.readyPromise = new Promise((resolve, reject) => {
@@ -105,6 +108,12 @@ class StockfishEngine {
         })
         this.pending = null
       }
+      this.isEvaluating = false
+      if (this.resolveStop) {
+        this.resolveStop()
+        this.resolveStop = null
+        this.stopPromise = null
+      }
     }
   }
 
@@ -145,9 +154,22 @@ class StockfishEngine {
       this.pending = null
     }
 
+    if (this.isEvaluating) {
+      this.worker.postMessage('stop')
+      if (!this.stopPromise) {
+        this.stopPromise = new Promise((resolve) => {
+          this.resolveStop = resolve
+        })
+      }
+      await this.stopPromise
+    }
+
+    if (!this.worker) throw new Error('Stockfish worker is not available')
+
     if (skill !== undefined) this.setSkillLevel(skill)
 
     this.currentEval = {}
+    this.isEvaluating = true
 
     return new Promise<Evaluation>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
@@ -160,7 +182,6 @@ class StockfishEngine {
 
       this.pending = { resolve, reject, timeoutId }
       // DO NOT send ucinewgame per-evaluation - it resets hash tables and makes engine play weaker
-      this.worker?.postMessage('stop')
       this.worker?.postMessage(`position fen ${fen}`)
       this.worker?.postMessage(`go depth ${depth}`)
     })
