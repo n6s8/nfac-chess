@@ -18,35 +18,59 @@ export type CouncilState = typeof CouncilStateAnnotation.State;
 const getLlm = () => {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_GROQ_API_KEY;
   if (!apiKey) throw new Error("Missing LLM API Key");
-  return new ChatGroq({ 
-    apiKey, 
+  return new ChatGroq({
+    apiKey,
     model: "llama-3.1-8b-instant",
-    temperature: 0.7 
+    temperature: 0.5,
   });
 };
 
 const engineAnalyst = async (state: CouncilState) => {
-  const blunders = state.analysis.filter(a => a.evaluationDiff <= -50);
-  if (blunders.length === 0) {
-    return { engineReport: "The player played flawlessly with no major centipawn drops. A masterpiece.", status: "Engine Analyst complete" };
+  const totalMoves = state.moves.filter((_, i) => i % 2 === 0).length;
+  const blunders = state.analysis.filter(a => a.blunder === true);
+  const mistakes = state.analysis.filter(a => a.mistake === true && !a.blunder);
+  const inaccuracies = state.analysis.filter(
+    a => !a.blunder && !a.mistake && a.evaluationDiff <= -20
+  );
+
+  let report = `The player made ${totalMoves} moves in this game. `;
+
+  if (blunders.length === 0 && mistakes.length === 0) {
+    report += `There were ${inaccuracies.length} inaccuracy(s) but no outright blunders or mistakes detected. `;
+    if (inaccuracies.length > 0) {
+      const worst = [...inaccuracies].sort((a, b) => a.evaluationDiff - b.evaluationDiff)[0];
+      report += `The most costly inaccuracy was on move ${worst.moveIndex + 1} (${worst.move}), losing approximately ${Math.abs(worst.evaluationDiff / 100).toFixed(1)} pawns.`;
+    } else {
+      report += `Overall accuracy was high throughout the game.`;
+    }
+  } else {
+    const worst = [...blunders, ...mistakes].sort((a, b) => a.evaluationDiff - b.evaluationDiff)[0];
+    report += `There were ${blunders.length} blunder(s) and ${mistakes.length} mistake(s). `;
+    report += `The worst was move ${worst.moveIndex + 1} (${worst.move}), dropping approximately ${Math.abs(worst.evaluationDiff / 100).toFixed(1)} pawns. `;
+    if (worst.bestMove) report += `The engine recommended ${worst.bestMove} instead.`;
   }
-  
-  const worst = blunders.sort((a, b) => a.evaluationDiff - b.evaluationDiff)[0];
-  const report = `The player made ${blunders.length} mistakes. The worst was on move ${worst.move}, causing a ${worst.evaluationDiff} centipawn drop. The engine recommended ${worst.bestMove}.`;
+
   return { engineReport: report, status: "Engine Analyst complete" };
 };
 
 const csProfessor = async (state: CouncilState) => {
-  if (!state.engineReport.includes("mistakes")) return { csReport: "Optimal algorithmic execution.", status: "CS Professor complete" };
-  
+  const hasErrors = state.engineReport.includes("blunder") || state.engineReport.includes("mistake");
+
+  if (!hasErrors) {
+    return {
+      csReport: "The moves followed sound algorithmic principles: prioritizing long-term structural gains over short-term tactics and correctly minimizing the opponent's best responses.",
+      status: "CS Professor complete",
+    };
+  }
+
   const llm = getLlm();
-  const prompt = `You are a Computer Science Professor. Read this chess engine report: "${state.engineReport}".
-  Classify the player's core mistake using strictly one of these algorithmic concepts:
-  - Greedy Algorithm (taking material but ignoring global state)
-  - Minimax Failure (ignoring the opponent's best response)
-  - Pruning Error (cutting off calculation too early)
-  Explain why in 2 sentences.`;
-  
+  const prompt = `You are a Computer Science Professor reviewing a chess game. Read this engine report: "${state.engineReport}".
+Classify the player's core mistake using exactly one of these CS concepts:
+- Greedy Algorithm (took material but ignored global board state)
+- Minimax Failure (did not account for the opponent's strongest reply)
+- Pruning Error (stopped calculating moves too early)
+Write 2 direct sentences. No emojis. No filler praise.`;
+
   const response = await llm.invoke(prompt);
   return { csReport: response.content as string, status: "CS Professor complete" };
 };
@@ -54,42 +78,56 @@ const csProfessor = async (state: CouncilState) => {
 const historianRag = async (state: CouncilState) => {
   const llm = getLlm();
   const db = `
-  1. Kasparov vs Deep Blue (1997, Game 6) - Pruning Error / Paralyzed calculation.
-  2. Spassky vs Fischer (1972, Game 3) - Minimax Failure / Miscalculated opponent aggression.
-  3. Tal vs Botvinnik (1960) - Greedy Algorithm / Botvinnik took material but Tal got infinite dynamic compensation.
-  4. Carlsen vs Caruana (2018) - Perfect execution / Unbreakable trade-offs.
-  `;
-  
-  const prompt = `You are a Chess Historian performing Retrieval-Augmented Generation (RAG). 
-  Look at this CS analysis of a player: "${state.csReport}".
-  Find the ONE historical game from this database that perfectly matches the CS concept:
-  ${db}
-  Return exactly two sentences explaining the historical comparison.`;
-  
+1. Kasparov vs Deep Blue (1997, Game 6) - Pruning Error — paralyzed calculation under pressure.
+2. Spassky vs Fischer (1972, Game 3) - Minimax Failure — underestimated opponent's aggression.
+3. Tal vs Botvinnik (1960) - Greedy Algorithm — Botvinnik grabbed material and lost dynamic compensation.
+4. Carlsen vs Caruana (2018) - Precise execution — controlled trade-offs under equal pressure.
+`;
+
+  const prompt = `You are a Chess Historian using Retrieval-Augmented Generation. 
+Given this analysis: "${state.csReport}"
+Select the single most relevant historical game from this database:
+${db}
+Write exactly 2 sentences explaining the parallel. Be specific. No emojis. No filler.`;
+
   const response = await llm.invoke(prompt);
   return { historicalGame: response.content as string, status: "Historian complete" };
 };
 
 const emotionalCoach = async (state: CouncilState) => {
-  if (!state.engineReport.includes("mistakes")) return { emotionalReport: "Ice in your veins. Absolute clarity.", status: "Emotional Coach complete" };
+  const hasErrors = state.engineReport.includes("blunder") || state.engineReport.includes("mistake");
+
+  if (!hasErrors) {
+    return {
+      emotionalReport: "Decision-making was consistent and composed throughout the game. No signs of tunnel vision or time pressure errors.",
+      status: "Emotional Coach complete",
+    };
+  }
+
   const llm = getLlm();
-  const prompt = `You are a psychological performance coach. Read this: "${state.csReport}". 
-  Provide one dramatic, encouraging sentence diagnosing the player's mental state causing this error (e.g. "You suffered from tunnel vision").`;
-  
+  const prompt = `You are a chess performance coach. Based on this analysis: "${state.csReport}"
+Write one direct sentence diagnosing the mental pattern behind the error. Examples: "You suffered from tunnel vision on the kingside" or "Time pressure led to shallow calculation." No emojis. No praise.`;
+
   const response = await llm.invoke(prompt);
   return { emotionalReport: response.content as string, status: "Emotional Coach complete" };
 };
 
 const synthesizer = async (state: CouncilState) => {
   const llm = getLlm();
-  const prompt = `You are the Lead Coach Synthesizer. Combine these 4 reports into a cohesive 3-paragraph markdown breakdown of the player's game:
-  1. Engine Math: ${state.engineReport}
-  2. Algorithmic Breakdown: ${state.csReport}
-  3. Historical Match (RAG): ${state.historicalGame}
-  4. Psychology: ${state.emotionalReport}
-  
-  Format it nicely with emojis and bolding. Write directly to the player.`;
-  
+  const prompt = `You are a lead chess coach writing a post-game debrief. Combine these 4 reports into a concise review of 3 paragraphs written directly to the player:
+
+Engine Report: ${state.engineReport}
+CS Analysis: ${state.csReport}
+Historical Reference: ${state.historicalGame}
+Mental Pattern: ${state.emotionalReport}
+
+Rules:
+- No emojis, no markdown headers, no bullet points
+- Each paragraph must be under 4 sentences
+- Be honest and direct — do not add generic praise if the player made mistakes
+- Do not repeat the same information across paragraphs
+- Write in plain prose`;
+
   const response = await llm.invoke(prompt);
   return { finalDebrief: response.content as string, status: "Synthesizer complete" };
 };
@@ -107,6 +145,6 @@ export function createCouncilGraph() {
     .addEdge("historianRag", "emotionalCoach")
     .addEdge("emotionalCoach", "synthesizer")
     .addEdge("synthesizer", END);
-    
+
   return builder.compile();
 }

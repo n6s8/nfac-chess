@@ -371,7 +371,7 @@ export async function createGameRoom(
       time_control: timeControl,
       white_time_ms: config.initialMs,
       black_time_ms: config.initialMs,
-      last_move_at: new Date().toISOString(),
+      last_move_at: null,
       chat_messages: [],
       updated_at: new Date().toISOString(),
     })
@@ -546,4 +546,129 @@ export async function recordMultiplayerResult(params: {
   })
 
   if (error) throw error
+}
+
+// ─── Friends System ──────────────────────────────────────────────────────────
+
+export interface FriendshipRecord {
+  id: string
+  requester_id: string
+  addressee_id: string
+  status: 'pending' | 'accepted' | 'declined'
+  created_at: string
+}
+
+export interface FriendChallengeRecord {
+  id: string
+  from_user_id: string
+  to_user_id: string
+  room_id: string | null
+  status: 'pending' | 'accepted' | 'declined'
+  created_at: string
+}
+
+export async function sendFriendRequest(fromUserId: string, toUserId: string): Promise<void> {
+  requireSupabase()
+  const { error } = await supabase
+    .from('friendships')
+    .insert({ requester_id: fromUserId, addressee_id: toUserId, status: 'pending' })
+  if (error) throw error
+}
+
+export async function acceptFriendRequest(friendshipId: string): Promise<void> {
+  requireSupabase()
+  const { error } = await supabase
+    .from('friendships')
+    .update({ status: 'accepted' })
+    .eq('id', friendshipId)
+  if (error) throw error
+}
+
+export async function declineFriendRequest(friendshipId: string): Promise<void> {
+  requireSupabase()
+  const { error } = await supabase
+    .from('friendships')
+    .update({ status: 'declined' })
+    .eq('id', friendshipId)
+  if (error) throw error
+}
+
+export async function removeFriend(friendshipId: string): Promise<void> {
+  requireSupabase()
+  const { error } = await supabase
+    .from('friendships')
+    .delete()
+    .eq('id', friendshipId)
+  if (error) throw error
+}
+
+export async function getFriends(userId: string): Promise<FriendshipRecord[]> {
+  if (!isSupabaseConfigured) return []
+  const { data, error } = await supabase
+    .from('friendships')
+    .select('*')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+    .eq('status', 'accepted')
+  if (error) throw error
+  return (data ?? []) as FriendshipRecord[]
+}
+
+export async function getPendingRequests(userId: string): Promise<FriendshipRecord[]> {
+  if (!isSupabaseConfigured) return []
+  const { data, error } = await supabase
+    .from('friendships')
+    .select('*')
+    .eq('addressee_id', userId)
+    .eq('status', 'pending')
+  if (error) throw error
+  return (data ?? []) as FriendshipRecord[]
+}
+
+export async function searchUsersByUsername(query: string): Promise<ProfileRecord[]> {
+  if (!isSupabaseConfigured) return []
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .ilike('username', `%${query}%`)
+    .limit(10)
+  if (error) throw error
+  return (data ?? []).map((item) => normalizeProfile(item))
+}
+
+export async function sendChallenge(fromUserId: string, toUserId: string, roomId: string): Promise<void> {
+  requireSupabase()
+  const { error } = await supabase
+    .from('friend_challenges')
+    .insert({ from_user_id: fromUserId, to_user_id: toUserId, room_id: roomId, status: 'pending' })
+  if (error) throw error
+}
+
+export async function acceptChallenge(challengeId: string): Promise<void> {
+  requireSupabase()
+  const { error } = await supabase
+    .from('friend_challenges')
+    .update({ status: 'accepted' })
+    .eq('id', challengeId)
+  if (error) throw error
+}
+
+export async function declineChallenge(challengeId: string): Promise<void> {
+  requireSupabase()
+  const { error } = await supabase
+    .from('friend_challenges')
+    .update({ status: 'declined' })
+    .eq('id', challengeId)
+  if (error) throw error
+}
+
+export async function getPendingChallenges(userId: string): Promise<FriendChallengeRecord[]> {
+  if (!isSupabaseConfigured) return []
+  const { data, error } = await supabase
+    .from('friend_challenges')
+    .select('*')
+    .eq('to_user_id', userId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as FriendChallengeRecord[]
 }

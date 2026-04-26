@@ -33,6 +33,14 @@ export interface ThinkingStyleProfile {
   positional: number
 }
 
+export interface RatingChange {
+  before: number
+  after: number
+  delta: number
+}
+
+type DrawResponse = 'accepted' | 'declined' | null
+
 type Action =
   | { type: 'MOVE'; move: ChessMove; fen: string }
   | { type: 'AI_THINKING'; value: boolean }
@@ -45,12 +53,16 @@ type Action =
   | { type: 'RESET' }
   | { type: 'RESIGN' }
   | { type: 'OFFER_DRAW' }
+  | { type: 'DRAW_RESPONSE'; response: DrawResponse }
   | { type: 'DRAW_ACCEPTED' }
   | { type: 'DRAW_DECLINED' }
+  | { type: 'SET_RATING_CHANGE'; change: RatingChange }
 
 interface ExtendedGameState extends GameState {
   thinkingStyle: ThinkingStyleProfile | null
   drawOffered: boolean
+  drawResponse: DrawResponse
+  ratingChange: RatingChange | null
 }
 
 const initialState: ExtendedGameState = {
@@ -68,6 +80,8 @@ const initialState: ExtendedGameState = {
   mode: 'ai',
   thinkingStyle: null,
   drawOffered: false,
+  drawResponse: null,
+  ratingChange: null,
 }
 
 function getLevelConfig(level: EngineLevel) {
@@ -77,7 +91,7 @@ function getLevelConfig(level: EngineLevel) {
 function reducer(state: ExtendedGameState, action: Action): ExtendedGameState {
   switch (action.type) {
     case 'MOVE':
-      return { ...state, fen: action.fen, moves: [...state.moves, action.move], status: 'playing', drawOffered: false }
+      return { ...state, fen: action.fen, moves: [...state.moves, action.move], status: 'playing', drawOffered: false, drawResponse: null }
     case 'AI_THINKING':
       return { ...state, isAiThinking: action.value }
     case 'GAME_OVER':
@@ -95,11 +109,15 @@ function reducer(state: ExtendedGameState, action: Action): ExtendedGameState {
     case 'RESIGN':
       return { ...state, result: state.playerColor === 'white' ? 'black' : 'white', status: 'checkmate', isAiThinking: false }
     case 'OFFER_DRAW':
-      return { ...state, drawOffered: true }
+      return { ...state, drawOffered: true, drawResponse: null }
+    case 'DRAW_RESPONSE':
+      return { ...state, drawResponse: action.response }
     case 'DRAW_ACCEPTED':
-      return { ...state, result: 'draw', status: 'draw', drawOffered: false, isAiThinking: false }
+      return { ...state, result: 'draw', status: 'draw', drawOffered: false, drawResponse: 'accepted', isAiThinking: false }
     case 'DRAW_DECLINED':
-      return { ...state, drawOffered: false }
+      return { ...state, drawOffered: false, drawResponse: 'declined' }
+    case 'SET_RATING_CHANGE':
+      return { ...state, ratingChange: action.change }
     case 'RESET':
       return { ...initialState }
     default:
@@ -109,23 +127,20 @@ function reducer(state: ExtendedGameState, action: Action): ExtendedGameState {
 
 function computeThinkingStyle(moves: ChessMove[], analysis?: MoveAnalysis[]): ThinkingStyleProfile {
   const counts: Record<MistakeType, number> = { greedy: 0, minimax: 0, tradeoff: 0, positional: 0 }
-  // Player moves are even-indexed (0, 2, 4...) for white
   const playerMoves = moves.filter((_, i) => i % 2 === 0)
   if (playerMoves.length === 0) return { greedy: 0, minimax: 0, tradeoff: 0, positional: 100 }
 
   for (let i = 0; i < playerMoves.length; i++) {
     const moveIndex = i * 2
     const analysisEntry = analysis?.find((a) => a.moveIndex === moveIndex)
-    
+
     if (analysisEntry) {
-      // Use the analysis type for blunders and mistakes – it is more accurate
       if (analysisEntry.blunder || analysisEntry.mistake) {
         counts[analysisEntry.type]++
         continue
       }
     }
-    
-    // Fallback to SAN-based classification for good moves
+
     const style = classifyMoveStyle(playerMoves[i].san)
     counts[style]++
   }
@@ -138,7 +153,6 @@ function computeThinkingStyle(moves: ChessMove[], analysis?: MoveAnalysis[]): Th
     positional: Math.round((counts.positional / total) * 100),
   }
 
-  // Ensure percentages sum to 100
   const sum = profile.greedy + profile.minimax + profile.tradeoff + profile.positional
   if (sum !== 100 && sum > 0) {
     profile.positional += 100 - sum
@@ -147,17 +161,17 @@ function computeThinkingStyle(moves: ChessMove[], analysis?: MoveAnalysis[]): Th
   return profile
 }
 
-
 async function updateEloAfterGame(
   user: AuthUser,
   result: GameResult,
   playerColor: 'white' | 'black'
-) {
+): Promise<RatingChange> {
   const playerWon = result === playerColor
   const isDraw = result === 'draw'
   const ratingChange = isDraw ? 0 : playerWon ? 15 : -15
 
-  const newRating = Math.max(100, (user.rating ?? 1200) + ratingChange)
+  const before = user.rating ?? 1200
+  const newRating = Math.max(100, before + ratingChange)
   const newWins = user.games_won + (playerWon ? 1 : 0)
   const newLosses = user.games_lost + (!playerWon && !isDraw ? 1 : 0)
   const newDraws = user.games_drawn + (isDraw ? 1 : 0)
@@ -173,6 +187,8 @@ async function updateEloAfterGame(
     games_lost: newLosses,
     games_drawn: newDraws,
   })
+
+  return { before, after: newRating, delta: ratingChange }
 }
 
 export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Intermediate') {
@@ -225,7 +241,6 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
     previewInFlightFen.current = fen
 
     try {
-      // Use shallow depth for preview, no skill override needed
       const evaluation = await getEngine().evaluate(fen, Math.min(levelConfig.depth, 8))
       previewRef.current = { fen, evaluation }
       dispatch({ type: 'SET_EVAL', value: evaluation.score })
@@ -249,7 +264,7 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
 
       const type = classifyMoveStyle(move.san)
       const mappedTypeString = type === 'minimax' ? 'Strategic' : type.charAt(0).toUpperCase() + type.slice(1)
-      
+
       dispatch({
         type: 'SET_LIVE_INSIGHT',
         insight: {
@@ -268,7 +283,9 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
         const result = getGameResult(game)
         dispatch({ type: 'GAME_OVER', result })
         if (user && result !== null) {
-          void updateEloAfterGame(user, result, state.playerColor).catch(console.error)
+          void updateEloAfterGame(user, result, state.playerColor)
+            .then((change) => dispatch({ type: 'SET_RATING_CHANGE', change }))
+            .catch(console.error)
         }
       }
 
@@ -288,7 +305,6 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
 
     try {
       const engine = getEngine()
-      // Pass correct depth AND skill level for this difficulty
       const evaluation = await engine.evaluate(getFen(game), levelConfig.depth, levelConfig.skill, levelConfig.elo)
       const lastMove = state.moves[state.moves.length - 1]
       const preview = previewRef.current
@@ -325,7 +341,9 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
         const result = getGameResult(game)
         dispatch({ type: 'GAME_OVER', result })
         if (user && result !== null) {
-          void updateEloAfterGame(user, result, state.playerColor).catch(console.error)
+          void updateEloAfterGame(user, result, state.playerColor)
+            .then((change) => dispatch({ type: 'SET_RATING_CHANGE', change }))
+            .catch(console.error)
         }
       }
     } catch (error) {
@@ -340,7 +358,9 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
           const result = getGameResult(game)
           dispatch({ type: 'GAME_OVER', result })
           if (user && result !== null) {
-            void updateEloAfterGame(user, result, state.playerColor).catch(console.error)
+            void updateEloAfterGame(user, result, state.playerColor)
+              .then((change) => dispatch({ type: 'SET_RATING_CHANGE', change }))
+              .catch(console.error)
           }
         }
       }
@@ -420,22 +440,45 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
     dispatch({ type: 'RESIGN' })
     if (user) {
       const result = state.playerColor === 'white' ? 'black' : 'white'
-      void updateEloAfterGame(user, result, state.playerColor).catch(console.error)
+      void updateEloAfterGame(user, result, state.playerColor)
+        .then((change) => dispatch({ type: 'SET_RATING_CHANGE', change }))
+        .catch(console.error)
     }
   }, [state.playerColor, user])
 
   const offerDraw = useCallback(() => {
     dispatch({ type: 'OFFER_DRAW' })
-    // For AI game: auto-decline draw after a brief moment (AI doesn't accept draws easily)
+
+    // Get current eval from previewRef — if roughly equal, AI may accept
+    const currentEval = previewRef.current?.evaluation.score ?? 0
+    const isEqual = Math.abs(currentEval) < 50 // within 0.5 pawns
+
+    const aiAccepts = isEqual && Math.random() < 0.4
+
     setTimeout(() => {
-      dispatch({ type: 'DRAW_DECLINED' })
-    }, 2000)
-  }, [])
+      if (aiAccepts) {
+        dispatch({ type: 'DRAW_ACCEPTED' })
+        if (user) {
+          void updateEloAfterGame(user, 'draw', state.playerColor)
+            .then((change) => dispatch({ type: 'SET_RATING_CHANGE', change }))
+            .catch(console.error)
+        }
+      } else {
+        dispatch({ type: 'DRAW_RESPONSE', response: 'declined' })
+        // Auto-clear the response banner after 4s
+        setTimeout(() => {
+          dispatch({ type: 'DRAW_DECLINED' })
+        }, 4000)
+      }
+    }, 1200)
+  }, [user, state.playerColor])
 
   const acceptDraw = useCallback(() => {
     dispatch({ type: 'DRAW_ACCEPTED' })
     if (user) {
-      void updateEloAfterGame(user, 'draw', state.playerColor).catch(console.error)
+      void updateEloAfterGame(user, 'draw', state.playerColor)
+        .then((change) => dispatch({ type: 'SET_RATING_CHANGE', change }))
+        .catch(console.error)
     }
   }, [user, state.playerColor])
 

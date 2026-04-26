@@ -10,20 +10,17 @@ export function MasterCouncilPanel({ moves, analysis }: { moves: ChessMove[], an
 
   const handleRunCouncil = async () => {
     setRunning(true)
-    setStatus('Engine Analyst is reviewing the math...')
+    setStatus('Engine Analyst reviewing...')
     try {
       const graph = createCouncilGraph()
       const initialState: Partial<CouncilState> = { moves, analysis }
-      
-      // Since Groq is absurdly fast, invoke is sufficient instead of chunk streaming
       const finalState = await graph.invoke(initialState)
-      
       setReport(finalState.finalDebrief || 'Council failed to synthesize a report.')
       setStatus('Complete')
       setComplete(true)
     } catch (e: any) {
       console.error(e)
-      setStatus(`Error executing LangGraph: ${e.message}`)
+      setStatus(`Error: ${e.message}`)
     } finally {
       setRunning(false)
     }
@@ -31,39 +28,54 @@ export function MasterCouncilPanel({ moves, analysis }: { moves: ChessMove[], an
 
   if (complete) {
     return (
-      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5 shadow-lg">
-        <h3 className="font-display text-xl text-emerald-400 mb-4 flex items-center gap-2">
-          <span>👑</span> Master Council Debrief
-        </h3>
-        <div className="prose prose-sm prose-invert max-w-none text-chess-text space-y-4">
-          {report.split('\n').map((paragraph, idx) => (
-            <p key={idx} className="leading-relaxed">{paragraph}</p>
-          ))}
+      <div className="rounded-xl border border-chess-border bg-chess-surface p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-display text-base uppercase tracking-widest text-chess-gold">
+            Master Council Debrief
+          </h3>
+          <span className="rounded-full border border-chess-gold/30 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-chess-gold">
+            Complete
+          </span>
+        </div>
+        <div className="space-y-3">
+          {report
+            .split('\n')
+            .map(p => p.trim())
+            .filter(p => p.length > 0)
+            .map((paragraph, idx) => (
+              <p key={idx} className="text-sm leading-relaxed text-chess-text">
+                {paragraph}
+              </p>
+            ))}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border border-chess-gold/30 bg-chess-gold/5 p-5 shadow-lg flex flex-col items-center justify-center text-center">
-      <h3 className="font-display text-xl text-chess-gold mb-2">Engage the Master Council</h3>
-      <p className="text-sm text-chess-muted mb-6 max-w-sm">
-        Unleash a LangGraph swarm of 5 specialized AI agents to debate your playstyle, cite historical games using RAG, and generate a psychological debrief.
+    <div className="rounded-xl border border-chess-border bg-chess-surface p-5 text-center">
+      <h3 className="font-display text-base uppercase tracking-widest text-chess-gold">
+        Master Council
+      </h3>
+      <p className="mt-2 text-sm text-chess-muted">
+        Five specialized AI agents debate your playstyle, cite historical games, and generate a concise debrief.
       </p>
-      
-      {running ? (
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-chess-gold border-t-transparent" />
-          <p className="text-xs font-mono text-chess-gold animate-pulse">{status}</p>
-        </div>
-      ) : (
-        <button
-          onClick={handleRunCouncil}
-          className="rounded-lg bg-chess-gold px-6 py-3 font-mono text-sm font-bold text-chess-bg transition-colors hover:bg-yellow-500 shadow-[0_0_15px_rgba(252,211,77,0.3)]"
-        >
-          Execute Multi-Agent Debrief
-        </button>
-      )}
+
+      <div className="mt-5">
+        {running ? (
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-chess-gold border-t-transparent" />
+            <p className="text-xs font-mono text-chess-muted">{status}</p>
+          </div>
+        ) : (
+          <button
+            onClick={handleRunCouncil}
+            className="rounded-lg border border-chess-gold/40 bg-chess-gold/10 px-6 py-2.5 font-mono text-sm text-chess-gold transition-colors hover:bg-chess-gold/20"
+          >
+            Generate Debrief
+          </button>
+        )}
+      </div>
     </div>
   )
 }
