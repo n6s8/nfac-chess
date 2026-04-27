@@ -23,6 +23,7 @@ export interface ChessMove {
   promotion?: string
   color?: PlayerColor
   uci?: string
+  captured?: string
   insight?: MoveInsight | null
 }
 

@@ -11,11 +11,11 @@ const BOARD_OPTIONS: Array<{ value: BoardTheme; label: string }> = [
   { value: 'minimal', label: 'Minimal' },
 ]
 
-const ENGINE_OPTIONS: Array<{ value: EngineLevel; label: string }> = [
-  { value: 'Beginner', label: 'Beginner' },
-  { value: 'Intermediate', label: 'Intermediate' },
-  { value: 'Advanced', label: 'Advanced' },
-  { value: 'Master', label: 'Master' },
+const ENGINE_OPTIONS: Array<{ value: EngineLevel; label: string; elo: string; description: string }> = [
+  { value: 'Beginner',     label: 'Beginner',     elo: '800',  description: 'Makes random blunders. Good for learning.' },
+  { value: 'Intermediate', label: 'Intermediate', elo: '1500', description: 'Avoids obvious mistakes. Plays solid chess.' },
+  { value: 'Advanced',    label: 'Advanced',     elo: '2000', description: 'Punishes every inaccuracy. Plays tactically.' },
+  { value: 'Master',      label: 'Master',       elo: '3200', description: 'Near perfect play. Full depth Stockfish.' },
 ]
 
 export function PreferenceToolbar({ preferences, onChange }: Props) {
@@ -88,20 +88,28 @@ export function PreferenceToolbar({ preferences, onChange }: Props) {
         {preferences.focusMode ? 'Exit Full Board View' : 'Full Board View'}
       </button>
 
-      <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-chess-muted">
-        Engine
-        <select
-          value={preferences.engineLevel}
-          onChange={(event) => onChange({ engineLevel: event.target.value as EngineLevel })}
-          className="rounded-md border border-chess-border bg-chess-surface px-3 py-1.5 text-xs font-mono text-chess-text focus:border-chess-gold/40 focus:outline-none"
-        >
-          {ENGINE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-chess-muted">
+          Engine
+          <select
+            value={preferences.engineLevel}
+            onChange={(event) => onChange({ engineLevel: event.target.value as EngineLevel })}
+            className="rounded-md border border-chess-border bg-chess-surface px-3 py-1.5 text-xs font-mono text-chess-text focus:border-chess-gold/40 focus:outline-none"
+          >
+            {ENGINE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label} ({option.elo} ELO)
+              </option>
+            ))}
+          </select>
+        </label>
+        {(() => {
+          const current = ENGINE_OPTIONS.find(o => o.value === preferences.engineLevel)
+          return current ? (
+            <p className="ml-[4.5rem] text-[10px] text-chess-muted font-mono">{current.description}</p>
+          ) : null
+        })()}
+      </div>
     </div>
   )
 }

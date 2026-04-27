@@ -15,6 +15,7 @@ import { ReplayPage } from '@/pages/Replay'
 import { FriendsPage } from '@/pages/Friends'
 import { ShopPage } from '@/pages/Shop'
 import { DailyPuzzlePage } from '@/pages/DailyPuzzle'
+import { NotFoundPage } from '@/pages/NotFound'
 
 export default function App() {
   return (
@@ -228,6 +229,7 @@ function AlgoChessApp() {
           }
         />
         <Route path="/replay/:id" element={<ReplayRoute preferences={preferences} />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
 
       <AuthModal

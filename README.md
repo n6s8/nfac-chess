@@ -2,7 +2,7 @@
 
 AlgoChess is the chess platform for developers and CS students. It doesn't just tell you what mistake you made — it tells you what algorithmic failure caused it: greedy local optimization, minimax blindness, premature search pruning, or positional neglect. Think of it as LeetCode feedback, but applied to chess.
 
-The system runs a real-time Stockfish evaluation engine in the browser, a multi-agent LangGraph pipeline for post-game debrief, a retrieval-augmented generation (RAG) historian that maps your play to historical grandmaster games, and a full multiplayer suite built on Supabase Realtime.
+The system runs a real-time Stockfish evaluation engine in the browser, a 5-stage sequential AI pipeline for post-game debrief running server-side in a Supabase Edge Function, a retrieval-augmented generation (RAG) historian that maps your play to historical grandmaster games, and a full multiplayer suite built on Supabase Realtime.
 
 ---
 
@@ -14,7 +14,7 @@ The system runs a real-time Stockfish evaluation engine in the browser, a multi-
 | **Repository** | https://github.com/n6s8/nfac-chess |
 | **Hosting** | Vercel (static, auto-deploy on push to main) |
 | **Database** | Supabase PostgreSQL — live, connected, RLS enabled |
-| **Backend API** | Supabase Edge Functions (Secure API proxy, Stripe Webhooks) |
+| **Backend API** | Supabase Edge Functions (Secure AI proxy, Stripe Webhooks) |
 | **Auth** | Supabase Auth — email/password, session-based |
 | **Monetization** | Stripe Checkout & Webhooks (Test Mode) |
 | **AI Inference** | Groq API — llama-3.1-8b-instant, live |
@@ -41,7 +41,7 @@ The only chess platform that explains moves in algorithmic terms — turning eac
 | Free → Pro conversion | > 4% |
 
 ### Monetization
-Pro tier ($4.99/mo): unlimited Master Council debriefs (free = 3/day), custom board themes, priority Stockfish depth (depth 24 vs 16).
+Pro tier ($4.99/mo): unlimited Master Council debriefs, custom board themes, priority Stockfish depth (depth 24 vs 16).
 
 ---
 
@@ -49,15 +49,17 @@ Pro tier ($4.99/mo): unlimited Master Council debriefs (free = 3/day), custom bo
 
 | Area | Description |
 |---|---|
-| Single-player vs Engine | Play against Stockfish at 4 difficulty levels (Beginner to Master). Each move is classified in real time using a heuristic algorithm. |
+| Single-player vs Engine | Play against Stockfish at 4 difficulty levels (Beginner 800 ELO → Master 3200 ELO). Each move is classified in real time using a heuristic algorithm. |
 | Post-game Analysis | Full Stockfish re-analysis of every move. Blunders and mistakes are explained through CS theory by a Groq LLM. |
-| Multi-agent Debrief | A 5-node LangGraph graph runs in sequence: Engine Analyst, CS Professor, Historian (RAG), Emotional Coach, Synthesizer. Produces a short, honest text debrief. |
-| Multiplayer | Real-time rooms via Supabase Realtime. Clock, draw negotiations, chat, and ELO updates persist to PostgreSQL. |
-| Friends and Challenges | Friend request system with search by username. Accepted friends can be challenged directly from the profile page, which creates a room and sends a notification. |
+| Master Council Debrief | A 5-stage sequential pipeline runs server-side: Engine Analyst → CS Professor → Historian (RAG) → Emotional Coach → Synthesizer. Produces a short, honest text debrief. |
+| Multiplayer | Real-time rooms via Supabase Realtime. Clock with increment, draw negotiations, in-game chat, and ELO updates persist to PostgreSQL. |
+| Friend Challenges | Share a room link with a friend — they join directly. Friend request system with username search. Accepted friends can be challenged from the Friends page. |
 | Rating System | ELO-style rating adjustments after every game, shown as a delta chip on the board after the result. |
-| Profile and History | Full game history with replay support. Country/city-based leaderboard. |
-| Economy & Store | Server-side coin economy (earn coins by playing). Purchase board themes in the Store. |
+| Profile and History | Full game history with move-by-move replay support. Country/city-based leaderboard. |
+| Economy & Store | Server-side coin economy (earn coins by playing). Purchase board themes via atomic DB transactions. 6 themes available. |
 | Monetization (Pro) | Fully integrated Stripe Checkout to upgrade to Pro, unlocking the Master Council debrief and exclusive themes. |
+| Daily CS Puzzle | A new chess puzzle every day framed as a CS problem (Greedy vs Minimax vs Pruning Error). Streak tracking persisted to the database. |
+| Sound Effects | Procedural Web Audio API sounds for moves, captures, check, win, loss, and draw — no external assets. |
 
 ---
 
@@ -80,8 +82,7 @@ flowchart TD
 
         subgraph Analysis["Post-game Analysis"]
             AP["analyzeGame()\nStockfish per-move scoring"]
-            LLM1["Groq LLM\nCS-framed explanations"]
-            Council["LangGraph\nMaster Council (5 agents)"]
+            LLM1["Groq LLM\nCS-framed explanations\n(via Edge Function proxy)"]
         end
     end
 
@@ -89,8 +90,12 @@ flowchart TD
         Auth["Auth\n(email/password)"]
         DB["PostgreSQL\n(profiles, games, game_rooms)"]
         RT["Realtime\n(WebSocket per room)"]
-        RPC["Stored Procedures\n(economy, transactions)"]
-        Edge["Edge Functions\n(AI Proxy, Stripe Webhook)"]
+        RPC["Stored Procedures\n(economy, ELO, transactions)"]
+        subgraph EdgeFns["Edge Functions"]
+            Council["Master Council\n5-stage AI pipeline\n(Groq, server-side)"]
+            StripeCheckout["stripe-checkout\nCreates Checkout session"]
+            StripeWebhook["stripe-webhook\nHandles payment events"]
+        end
     end
 
     UI --> Hook_SP
@@ -119,7 +124,7 @@ flowchart TD
 
 ### Post-game Analysis Pipeline
 
-After a game ends, `analyzeGame()` iterates over every move and evaluates each resulting position with Stockfish. Then `enrichAnalysisWithExplanations()` sends the flagged mistakes to Groq for CS-framed explanations.
+After a game ends, `analyzeGame()` iterates over every move and evaluates each resulting position with Stockfish. Then `enrichAnalysisWithExplanations()` sends the flagged mistakes to Groq (via the Edge Function proxy) for CS-framed explanations.
 
 ```mermaid
 flowchart LR
@@ -131,7 +136,7 @@ flowchart LR
     Blunder["Blunder\ndiff <= -150cp"]
     Mistake["Mistake\ndiff <= -50cp"]
     Good["Inaccuracy / Good\nno flag"]
-    Enrich["enrichAnalysisWithExplanations\nbatch Groq calls"]
+    Enrich["enrichAnalysisWithExplanations\nbatch Groq calls (Edge Function)"]
     LLM2["Groq LLM\nllama-3.1-8b-instant\nClassify as Greedy / Minimax /\nPruning / Positional"]
     Profile["ThinkingStyle Profile\ngreedy% minimax% tradeoff% positional%"]
 
@@ -148,7 +153,7 @@ flowchart LR
 
 ### Master Council (5-stage Pipeline)
 
-The debrief pipeline follows a 5-stage sequential design (Engine Analyst → CS Professor → Historian → Emotional Coach → Synthesizer), implemented as a manual async chain in the `ai-debrief` Edge Function. The pseudo-code graph definition in `src/lib/agents.ts` mirrors this structure and serves as the architectural reference. No branching occurs. Each node reads the full state produced so far, adds its own report, and passes the enriched state to the next node.
+The debrief pipeline follows a 5-stage sequential design (Engine Analyst → CS Professor → Historian → Emotional Coach → Synthesizer), implemented as a manual async chain of `groqChat()` calls in the `ai-debrief` Supabase Edge Function. No LangGraph SDK is used — the pipeline is a hand-written sequential async function. Each stage reads the accumulated state, adds its own report, and passes the enriched context to the next stage.
 
 ```mermaid
 flowchart TD
@@ -283,6 +288,13 @@ erDiagram
         int games_won
         int games_lost
         int games_drawn
+        int coins
+        text[] owned_themes
+        bool is_pro
+        text stripe_customer_id
+        text stripe_subscription_id
+        int daily_puzzle_streak
+        date last_puzzle_date
     }
 
     GAME_ROOMS {
@@ -350,10 +362,12 @@ erDiagram
 | Chess Engine | Stockfish 16 (WASM) via Web Worker, UCI protocol |
 | Chess Logic | chess.js (move validation, FEN, PGN) |
 | Board UI | react-chessboard |
+| Sound | Web Audio API (procedural tones, no external files) |
 | Database | Supabase (PostgreSQL, Row Level Security, Realtime) |
 | Auth | Supabase Auth (email/password) |
 | AI Inference | Groq API, llama-3.1-8b-instant |
-| Multi-agent | LangChain LangGraph (StateGraph, sequential DAG) |
+| AI Pipeline | 5-stage sequential async pipeline (Edge Function, Groq) |
+| Payments | Stripe Checkout + Webhooks (Edge Functions) |
 | Routing | React Router v6 |
 
 ---
@@ -399,15 +413,26 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 VITE_STRIPE_PRICE_ID=price_...
 ```
 
-**Note on Security:** Sensitive keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the `GROQ_API_KEY` for the Master Council and move explanations) are stored securely in **Supabase Secrets** and are only accessed by Edge Functions. They are never exposed to the browser bundle.
+**Note on Security:** Sensitive keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `GROQ_API_KEY`) are stored in **Supabase Secrets** and are only accessed by Edge Functions. They are never exposed to the browser bundle.
 
 **4. Apply the database schema**
 
-Open the Supabase SQL editor and run the contents of `supabase/schema.sql` in full. This creates all tables, indices, RLS policies, triggers, and the `record_multiplayer_result` stored procedure.
+Open the Supabase SQL editor and run the contents of `supabase/schema.sql` in full. This creates all tables, indices, RLS policies, triggers, and stored procedures.
 
 If you are updating an existing deployment, the schema uses `create table if not exists` and `alter table ... add column if not exists` throughout. It is safe to re-run.
 
-**5. Start the development server**
+**5. Deploy Edge Functions**
+
+```bash
+supabase functions deploy ai-debrief
+supabase functions deploy stripe-checkout
+supabase functions deploy stripe-webhook
+supabase secrets set GROQ_API_KEY=gsk_...
+supabase secrets set STRIPE_SECRET_KEY=sk_test_...
+supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+**6. Start the development server**
 
 ```bash
 npm run dev
@@ -432,29 +457,47 @@ The app runs on `http://localhost:5173` by default.
 src/
 ├── components/
 │   ├── AnalysisPanel.tsx       Post-game analysis UI, worst moves, master council trigger
-│   ├── ChessBoard.tsx          Board rendering, move interaction, resign/draw controls
-│   ├── MasterCouncilPanel.tsx  Multi-agent debrief UI and status display
+│   ├── AuthModal.tsx           Login/signup flow with username uniqueness check
+│   ├── ChessBoard.tsx          Board rendering, move interaction, resign/draw controls, sounds
+│   ├── CreateRoomModal.tsx     Room creation with time control selection
+│   ├── MasterCouncilPanel.tsx  5-stage AI debrief UI — calls the ai-debrief Edge Function
 │   ├── MoveHistory.tsx         Scrollable move list with analysis overlay
-│   └── PreferenceToolbar.tsx   Board theme, engine level, focus mode controls
+│   ├── PreferenceToolbar.tsx   Board theme, engine level (with ELO descriptions), focus mode
+│   ├── ProModal.tsx            Stripe Checkout upgrade UI with feature list
+│   └── ThinkingStylePanel.tsx  Greedy/minimax/tradeoff/positional breakdown chart
 ├── hooks/
+│   ├── useAuthSession.ts       Auth state, profile refresh on session change
+│   ├── useChessSound.ts        Procedural Web Audio API sounds (move, capture, check, win/loss)
 │   ├── useGame.ts              Single-player state machine, Stockfish loop, rating updates
-│   └── useGameRoom.ts          Multiplayer state, clock, draw negotiations, Realtime sync
+│   ├── useGameRoom.ts          Multiplayer state, clock, draw negotiations, Realtime sync
+│   └── useThemePreferences.ts  Dark/light mode + board theme persistence via localStorage
 ├── lib/
-│   ├── agents.ts               Architectural reference for the 5-node pipeline
-│   ├── ai.ts                   Move analysis orchestration, Edge Function proxy
+│   ├── agents.ts               Architectural reference for the 5-stage pipeline structure
+│   ├── ai.ts                   Move analysis orchestration, Edge Function proxy calls
 │   ├── chess.ts                chess.js wrappers (makeMove, getFen, getGameResult, etc.)
 │   ├── stockfish.ts            StockfishEngine class, UCI protocol, Web Worker bridge
-│   ├── supabase.ts             All database operations, auth, friends, challenges
+│   ├── stripe.ts               Stripe Checkout session creation via Edge Function
+│   ├── supabase.ts             All database operations, auth, friends, shop, challenges
 │   └── time-controls.ts        Time control configs (bullet, blitz, rapid, classical)
 ├── pages/
+│   ├── DailyPuzzle.tsx         Daily CS puzzle with streak tracking (persisted to DB)
+│   ├── Friends.tsx             Friend search, requests, challenge flow
 │   ├── Game.tsx                Single-player layout, player cards, eval bar
-│   ├── MultiplayerRoom.tsx     Multiplayer layout, lobby, countdown, clock bars
-│   ├── Profile.tsx             User profile, game history, friends tab, challenges
-│   ├── Friends.tsx             Friend search, requests, challenge flow (logic in supabase.ts)
 │   ├── Leaderboard.tsx         Country/city-filtered rating leaderboard
-│   └── Replay.tsx              Move-by-move game replay from history
+│   ├── MultiplayerRoom.tsx     Multiplayer layout, lobby, countdown, clock bars, chat
+│   ├── NotFound.tsx            404 page with chess-themed message
+│   ├── Profile.tsx             User profile, game history, friends tab, challenges
+│   ├── Replay.tsx              Move-by-move game replay from history
+│   └── Shop.tsx                Board theme store with server-side coin economy
 └── types/
     └── index.ts                All shared TypeScript interfaces and type aliases
+
+supabase/
+├── schema.sql                  Full DDL: tables, RLS policies, triggers, stored procedures
+└── functions/
+    ├── ai-debrief/             5-stage AI pipeline + single-move explanations (Groq)
+    ├── stripe-checkout/        Creates Stripe Checkout session server-side
+    └── stripe-webhook/         Handles checkout.session.completed → sets is_pro in DB
 ```
 
 ---
@@ -466,3 +509,5 @@ src/
 **Clock authority**: Time enforcement runs on the room creator's browser. If the creator disconnects mid-game, the clock stops. A production implementation would move this to a server-side cron or Edge Function.
 
 **ELO simplification**: The current rating system applies fixed deltas (+15 win, -15 loss, 0 draw for single-player; +16/-16/+4 for multiplayer via stored procedure). It does not account for opponent strength. Replace with a proper ELO formula if ranking fidelity is a requirement.
+
+**AI pipeline**: The Master Council pipeline is implemented as a sequential async chain of Groq API calls, not a graph framework. The design mirrors a 5-node DAG but does not use LangGraph or LangChain at runtime.

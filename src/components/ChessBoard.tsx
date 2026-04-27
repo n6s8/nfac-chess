@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import type { Square } from 'chess.js'
 import type { CSSProperties } from 'react'
 import type { BoardTheme, GameState, PlayerColor } from '@/types'
+import { soundCapture, soundCheck, soundDraw, soundGameOver, soundMove } from '@/hooks/useChessSound'
 
 interface Props {
   state: GameState
@@ -34,6 +35,36 @@ export function ChessBoardPanel({
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
   const [isFlipped, setIsFlipped] = useState(false)
   const [showResignConfirm, setShowResignConfirm] = useState(false)
+  const prevMoveCount = useRef(0)
+  const prevResult = useRef<string | null>(null)
+  const prevInCheck = useRef(false)
+
+  // Sound effects
+  useEffect(() => {
+    const moveCount = state.moves.length
+    if (moveCount > prevMoveCount.current) {
+      const lastMove = state.moves[moveCount - 1]
+      if (lastMove?.captured) {
+        soundCapture()
+      } else {
+        soundMove()
+      }
+      prevMoveCount.current = moveCount
+    }
+  }, [state.moves])
+
+  useEffect(() => {
+    if (inCheck && !prevInCheck.current) soundCheck()
+    prevInCheck.current = inCheck
+  }, [inCheck])
+
+  useEffect(() => {
+    if (state.result && state.result !== prevResult.current) {
+      if (state.result === 'draw') soundDraw()
+      else soundGameOver(state.result === state.playerColor)
+      prevResult.current = state.result
+    }
+  }, [state.result, state.playerColor])
 
   const isInteractive =
     state.status === 'playing' && !state.isAiThinking && state.result === null

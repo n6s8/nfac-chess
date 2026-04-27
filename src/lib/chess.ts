@@ -23,6 +23,7 @@ export function makeMove(
       promotion: result.promotion,
       color: result.color === 'w' ? 'white' : 'black',
       uci: `${result.from}${result.to}${result.promotion ?? ''}`,
+      captured: result.captured,
     }
   } catch {
     return null
