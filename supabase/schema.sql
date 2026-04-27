@@ -186,6 +186,8 @@ using (
   auth.uid() = white_player_id
   or auth.uid() = black_player_id
   or auth.uid() = created_by
+  or white_player_id is null
+  or black_player_id is null
 )
 with check (
   auth.uid() = white_player_id
