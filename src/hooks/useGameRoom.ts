@@ -57,20 +57,40 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
   const previewInFlightFen = useRef<string | null>(null)
   const finalizeAttemptedRef = useRef(false)
   const joinAttemptedRef = useRef(false)
+  const previousTurnRef = useRef<string | null>(null)
+  const gameStartedRef = useRef(false)
 
+  // Reset refs when room changes
   useEffect(() => {
     joinAttemptedRef.current = false
     finalizeAttemptedRef.current = false
   }, [roomId])
 
-  // Sync lastMoveAtMs when room.last_move_at changes from server
+  // Track turn changes and update lastMoveAtMs using client time only
+  // This prevents clock skew from server-side timestamp differences
   useEffect(() => {
-    if (!room?.last_move_at) {
+    if (!room || !room.last_move_at) {
       setLastMoveAtMs(null)
-    } else {
-      setLastMoveAtMs(new Date(room.last_move_at).getTime())
+      gameStartedRef.current = false
+      previousTurnRef.current = null
+      return
     }
-  }, [room?.last_move_at])
+
+    // Mark game as started once we have a last_move_at
+    if (!gameStartedRef.current && room.moves.length > 0) {
+      gameStartedRef.current = true
+      previousTurnRef.current = room.turn
+      // Initialize lastMoveAtMs to now when game truly starts with first move
+      setLastMoveAtMs(Date.now())
+      return
+    }
+
+    // Detect turn change - when turn changes, reset timer to now
+    if (gameStartedRef.current && previousTurnRef.current && previousTurnRef.current !== room.turn) {
+      previousTurnRef.current = room.turn
+      setLastMoveAtMs(Date.now())
+    }
+  }, [room?.turn, room?.moves.length, room?.last_move_at, room])
 
   useEffect(() => {
     if (!roomId) return
