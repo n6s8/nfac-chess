@@ -45,12 +45,12 @@ export function GamePage({
       <PreferenceToolbar preferences={preferences} onChange={onPreferencesChange} />
 
       <div
-        className={`grid gap-4 ${
-          preferences.focusMode ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_340px]'
+        className={`grid gap-6 items-start ${
+          preferences.focusMode ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_400px]'
         }`}
       >
-        {/* Left: Board column */}
-        <section className="flex min-w-0 flex-col gap-3">
+        {/* Left: Board column - Sticky to prevent empty space when scrolling */}
+        <section className="sticky top-4 flex min-w-0 flex-col gap-3">
           {/* Algorithmic live insight banner */}
           {preferences.algorithmicMode && (
             <AlgorithmicBanner
@@ -64,7 +64,7 @@ export function GamePage({
           <div className="rounded-xl border border-chess-border bg-chess-panel/60 p-3 sm:p-4">
             <div
               className={`mx-auto flex w-full justify-center overflow-hidden ${
-                preferences.focusMode ? 'max-w-full md:max-w-[1040px]' : 'max-w-full md:max-w-[680px]'
+                preferences.focusMode ? 'w-full max-w-[80vh]' : 'w-full max-w-[65vh]'
               }`}
             >
               <div className="w-full">
@@ -123,11 +123,10 @@ export function GamePage({
           </div>
         </section>
 
-        {/* Right: Sidebar */}
+        {/* Right: Sidebar - Scrolls while board stays fixed */}
         <aside
-          className={`flex min-w-0 flex-col gap-3 ${
-            preferences.sidebarCollapsed || preferences.focusMode ? 'lg:hidden' : ''
-          }`}
+          className={`flex min-w-0 flex-col gap-4 ${preferences.sidebarCollapsed || preferences.focusMode ? 'lg:hidden' : ''
+            }`}
         >
           {/* Player cards */}
           <div className="grid grid-cols-2 gap-3">
@@ -144,8 +143,8 @@ export function GamePage({
             />
           </div>
 
-          {/* Move history - compact scrollable */}
-          <div className="rounded-xl border border-chess-border bg-chess-panel p-3 max-h-48 overflow-y-auto">
+          {/* Move history - tall scrollable area */}
+          <div className="rounded-xl border border-chess-border bg-chess-panel p-3 max-h-[40vh] overflow-y-auto custom-scroll">
             <MoveHistory moves={state.moves} analysis={state.analysis} />
           </div>
 
@@ -226,9 +225,8 @@ function PlayerCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-3 transition-colors ${
-        isActive ? 'border-chess-gold/40 bg-chess-gold/10' : 'border-chess-border bg-chess-panel'
-      }`}
+      className={`rounded-xl border p-3 transition-colors ${isActive ? 'border-chess-gold/40 bg-chess-gold/10' : 'border-chess-border bg-chess-panel'
+        }`}
     >
       <p className="truncate font-display text-sm text-chess-text">{label}</p>
       <p className="mt-0.5 text-xs text-chess-muted">{subtitle}</p>

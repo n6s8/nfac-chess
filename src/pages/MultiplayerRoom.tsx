@@ -92,11 +92,10 @@ export function MultiplayerRoomPage({
       <PreferenceToolbar preferences={preferences} onChange={onPreferencesChange} />
 
       <div
-        className={`grid gap-6 ${
-          preferences.focusMode ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_360px]'
-        }`}
+        className={`grid gap-6 items-start ${preferences.focusMode ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_400px]'
+          }`}
       >
-        <section className="flex min-w-0 flex-col gap-4">
+        <section className="sticky top-4 flex min-w-0 flex-col gap-4">
           <div className="rounded-xl border border-chess-border bg-chess-panel p-4">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -151,9 +150,8 @@ export function MultiplayerRoomPage({
 
           <div className="rounded-xl border border-chess-border bg-chess-panel/60 p-3 sm:p-4">
             <div
-              className={`mx-auto flex w-full justify-center overflow-hidden ${
-                preferences.focusMode ? 'max-w-full md:max-w-[1040px]' : 'max-w-full md:max-w-[680px]'
-              }`}
+              className={`mx-auto flex w-full justify-center overflow-hidden ${preferences.focusMode ? 'w-full max-w-[80vh]' : 'w-full max-w-[65vh]'
+                }`}
             >
               <div className="w-full">
                 <ChessBoardPanel
@@ -174,20 +172,18 @@ export function MultiplayerRoomPage({
             <span className="rounded-lg border border-chess-border bg-chess-surface px-3 py-1.5 text-xs font-mono uppercase tracking-wide text-chess-muted">
               ⏱ {room.time_control}
             </span>
-            <span className={`rounded-lg border px-3 py-1.5 text-xs font-mono uppercase tracking-wide ${
-              room.status === 'playing' ? 'border-chess-good/30 text-chess-good' :
-              room.status === 'finished' ? 'border-chess-muted/30 text-chess-muted' :
-              'border-chess-gold/30 text-chess-gold'
-            }`}>
+            <span className={`rounded-lg border px-3 py-1.5 text-xs font-mono uppercase tracking-wide ${room.status === 'playing' ? 'border-chess-good/30 text-chess-good' :
+                room.status === 'finished' ? 'border-chess-muted/30 text-chess-muted' :
+                  'border-chess-gold/30 text-chess-gold'
+              }`}>
               {room.status}
             </span>
           </div>
         </section>
 
         <aside
-          className={`flex min-w-0 flex-col gap-4 ${
-            preferences.sidebarCollapsed || preferences.focusMode ? 'lg:hidden' : ''
-          }`}
+          className={`flex min-w-0 flex-col gap-4 ${preferences.sidebarCollapsed || preferences.focusMode ? 'lg:hidden' : ''
+            }`}
         >
           <div className="grid grid-cols-2 gap-3">
             <PlayerCard
@@ -202,7 +198,7 @@ export function MultiplayerRoomPage({
             />
           </div>
 
-          <div className="rounded-xl border border-chess-border bg-chess-panel p-4">
+          <div className="rounded-xl border border-chess-border bg-chess-panel p-3 max-h-[40vh] overflow-y-auto custom-scroll">
             <MoveHistory moves={state.moves} analysis={state.analysis} />
           </div>
 
@@ -233,7 +229,7 @@ export function MultiplayerRoomPage({
                     </div>
                     <p className="mt-2 text-sm text-chess-text">{message.message}</p>
                   </div>
-              ))}
+                ))}
             </div>
 
             <form
@@ -274,11 +270,10 @@ function ClockCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 transition-colors ${
-        active
+      className={`rounded-xl border p-4 transition-colors ${active
           ? 'border-chess-gold/40 bg-chess-gold/10'
           : 'border-chess-border bg-chess-panel'
-      }`}
+        }`}
     >
       <p className="truncate text-sm text-chess-muted">{label}</p>
       <p className="mt-2 font-display text-3xl text-chess-gold">{formatClock(value)}</p>
@@ -297,11 +292,10 @@ function PlayerCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 transition-colors ${
-        isActive
+      className={`rounded-xl border p-4 transition-colors ${isActive
           ? 'border-chess-gold/40 bg-chess-gold/10'
           : 'border-chess-border bg-chess-panel'
-      }`}
+        }`}
     >
       <p className="truncate font-display text-lg text-chess-text">{label}</p>
       <p className="mt-1 text-sm text-chess-muted">{subtitle}</p>
