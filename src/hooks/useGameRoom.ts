@@ -535,7 +535,6 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
 
   useEffect(() => {
     if (!room || room.status === 'finished') return
-    if (!user || user.id !== room.created_by) return
 
     const whiteFlagged = clockTimes.white <= 0
     const blackFlagged = clockTimes.black <= 0
@@ -575,7 +574,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
       .catch((clockError) => {
         console.error('[room] clock result error:', clockError)
       })
-  }, [clockTimes.black, clockTimes.white, room, user])
+  }, [clockTimes.black, clockTimes.white, room])
 
   const state: GameState = {
     fen: room?.fen ?? INITIAL_FEN,

@@ -89,6 +89,10 @@ export function AuthModal({ open, onClose, onSuccess }: Props) {
         setError('Incorrect email/username or password.')
       } else if (msg.includes('Password should be at least')) {
         setError('Password must be at least 6 characters.')
+      } else if (msg.includes('over_email_send_rate_limit') || msg.includes('Too many requests') || msg.includes('rate limit')) {
+        setError('Too many signup attempts from this location. Please wait 1-2 minutes and try again, or try from a different network.')
+      } else if (msg.includes('service_role')) {
+        setError('Temporary authentication service issue. Please try again in a few moments.')
       } else {
         setError(msg)
       }
