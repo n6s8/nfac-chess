@@ -125,7 +125,7 @@ function reducer(state: ExtendedGameState, action: Action): ExtendedGameState {
   }
 }
 
-function computeThinkingStyle(moves: ChessMove[], analysis?: MoveAnalysis[]): ThinkingStyleProfile {
+export function computeThinkingStyle(moves: ChessMove[], analysis?: MoveAnalysis[]): ThinkingStyleProfile {
   const counts: Record<MistakeType, number> = { greedy: 0, minimax: 0, tradeoff: 0, positional: 0 }
   const playerMoves = moves.filter((_, i) => i % 2 === 0)
   if (playerMoves.length === 0) return { greedy: 0, minimax: 0, tradeoff: 0, positional: 100 }

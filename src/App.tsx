@@ -190,6 +190,7 @@ function AlgoChessApp() {
               preferences={preferences}
               onPreferencesChange={updatePreferences}
               onAuthRequested={() => setAuthOpen(true)}
+              onUpgradeRequested={() => setProOpen(true)}
             />
           }
         />
@@ -259,6 +260,7 @@ function RoomRoute(props: {
   preferences: ReturnType<typeof useThemePreferences>['preferences']
   onPreferencesChange: ReturnType<typeof useThemePreferences>['updatePreferences']
   onAuthRequested: () => void
+  onUpgradeRequested: () => void
 }) {
   const { id } = useParams()
   return <MultiplayerRoomPage roomId={id} {...props} />

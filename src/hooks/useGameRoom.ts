@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { analyzeGame, buildStructuredInsight, enrichAnalysisWithExplanations } from '@/lib/ai'
+import { computeThinkingStyle, type ThinkingStyleProfile } from '@/hooks/useGame'
 import {
   getCurrentTurn,
   getFen,
@@ -46,6 +47,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<MoveAnalysis[]>([])
+  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyleProfile | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [liveInsight, setLiveInsight] = useState<GameState['liveInsight']>(null)
@@ -350,6 +352,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
 
       setAnalysis(enriched)
       setAnalysisProgress(100)
+      setThinkingStyle(computeThinkingStyle(room.moves, enriched))
       
       if (user?.id) {
         const loserId =
@@ -607,5 +610,6 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
     shareUrl:
       roomId && typeof window !== 'undefined' ? `${window.location.origin}/game/${roomId}` : '',
     canMove: Boolean(role && room?.turn === role && room.status !== 'finished'),
+    thinkingStyle,
   } as const
 }

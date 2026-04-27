@@ -3,6 +3,8 @@ import { AnalysisPanel } from '@/components/AnalysisPanel'
 import { ChessBoardPanel } from '@/components/ChessBoard'
 import { MoveHistory } from '@/components/MoveHistory'
 import { PreferenceToolbar } from '@/components/PreferenceToolbar'
+import { ThinkingStylePanel } from '@/components/ThinkingStylePanel'
+import { TrainingPlan } from '@/components/TrainingPlan'
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { formatClock } from '@/lib/time-controls'
 import type { AuthUser, ThemePreferences } from '@/types'
@@ -13,6 +15,7 @@ interface Props {
   preferences: ThemePreferences
   onPreferencesChange: (patch: Partial<ThemePreferences>) => void
   onAuthRequested: () => void
+  onUpgradeRequested: () => void
 }
 
 export function MultiplayerRoomPage({
@@ -21,6 +24,7 @@ export function MultiplayerRoomPage({
   preferences,
   onPreferencesChange,
   onAuthRequested,
+  onUpgradeRequested,
 }: Props) {
   const {
     room,
@@ -173,12 +177,69 @@ export function MultiplayerRoomPage({
               ⏱ {room.time_control}
             </span>
             <span className={`rounded-lg border px-3 py-1.5 text-xs font-mono uppercase tracking-wide ${room.status === 'playing' ? 'border-chess-good/30 text-chess-good' :
-                room.status === 'finished' ? 'border-chess-muted/30 text-chess-muted' :
-                  'border-chess-gold/30 text-chess-gold'
+              room.status === 'finished' ? 'border-chess-muted/30 text-chess-muted' :
+                'border-chess-gold/30 text-chess-gold'
               }`}>
               {room.status}
             </span>
           </div>
+
+          {state.thinkingStyle && (
+            <div className="mt-2 grid gap-4 sm:grid-cols-2">
+              <ThinkingStylePanel profile={state.thinkingStyle} />
+              <TrainingPlan profile={state.thinkingStyle} gameId={room.id} />
+            </div>
+          )}
+
+          {state.analysis.length > 0 && (
+            <div className="mt-4 rounded-xl border border-chess-border bg-chess-panel p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-xs uppercase tracking-widest text-chess-gold">
+                  Chat
+                </h2>
+                <span className="text-xs font-mono text-chess-muted">
+                  {(room.chat_messages ?? []).length} messages
+                </span>
+              </div>
+
+              <div className="custom-scroll max-h-32 space-y-2 overflow-y-auto">
+                {(room.chat_messages ?? [])
+                  .filter((message) => !String(message.message).startsWith('DRAW_'))
+                  .map((message) => (
+                    <div key={message.id} className="rounded-lg border border-chess-border bg-chess-surface p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-mono text-chess-gold">{message.sender_label}</p>
+                        <span className="text-[10px] font-mono text-chess-muted">
+                          {new Date(message.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-chess-text">{message.message}</p>
+                    </div>
+                  ))}
+              </div>
+
+              <form
+                className="mt-3 flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void sendChatMessage(chatMessage).then(() => setChatMessage(''))
+                }}
+              >
+                <input
+                  value={chatMessage}
+                  onChange={(event) => setChatMessage(event.target.value)}
+                  placeholder="Type a message"
+                  className="min-w-0 flex-1 rounded-lg border border-chess-border bg-chess-surface px-4 py-3 font-mono text-sm text-chess-text placeholder:text-chess-muted focus:border-chess-gold/40 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg border border-chess-gold/30 bg-chess-gold/10 px-4 py-3 text-xs font-mono uppercase tracking-wide text-chess-gold transition-colors hover:bg-chess-gold/20"
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          )}
         </section>
 
         <aside
@@ -203,56 +264,64 @@ export function MultiplayerRoomPage({
           </div>
 
           <div className="rounded-xl border border-chess-border bg-chess-panel p-4">
-            <AnalysisPanel state={state} onRunAnalysis={runAnalysis} />
+            <AnalysisPanel
+              state={state}
+              onRunAnalysis={runAnalysis}
+              isPro={user?.is_pro ?? false}
+              onUpgradeRequested={onUpgradeRequested}
+              gameId={room.id}
+            />
           </div>
 
-          <div className="rounded-xl border border-chess-border bg-chess-panel p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-display text-xs uppercase tracking-widest text-chess-gold">
-                Chat
-              </h2>
-              <span className="text-xs font-mono text-chess-muted">
-                {(room.chat_messages ?? []).length} messages
-              </span>
-            </div>
+          {state.analysis.length === 0 && (
+            <div className="rounded-xl border border-chess-border bg-chess-panel p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-xs uppercase tracking-widest text-chess-gold">
+                  Chat
+                </h2>
+                <span className="text-xs font-mono text-chess-muted">
+                  {(room.chat_messages ?? []).length} messages
+                </span>
+              </div>
 
-            <div className="custom-scroll max-h-32 space-y-2 overflow-y-auto">
-              {(room.chat_messages ?? [])
-                .filter((message) => !String(message.message).startsWith('DRAW_'))
-                .map((message) => (
-                  <div key={message.id} className="rounded-lg border border-chess-border bg-chess-surface p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-mono text-chess-gold">{message.sender_label}</p>
-                      <span className="text-[10px] font-mono text-chess-muted">
-                        {new Date(message.created_at).toLocaleTimeString()}
-                      </span>
+              <div className="custom-scroll max-h-32 space-y-2 overflow-y-auto">
+                {(room.chat_messages ?? [])
+                  .filter((message) => !String(message.message).startsWith('DRAW_'))
+                  .map((message) => (
+                    <div key={message.id} className="rounded-lg border border-chess-border bg-chess-surface p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-mono text-chess-gold">{message.sender_label}</p>
+                        <span className="text-[10px] font-mono text-chess-muted">
+                          {new Date(message.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-chess-text">{message.message}</p>
                     </div>
-                    <p className="mt-2 text-sm text-chess-text">{message.message}</p>
-                  </div>
-                ))}
-            </div>
+                  ))}
+              </div>
 
-            <form
-              className="mt-3 flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void sendChatMessage(chatMessage).then(() => setChatMessage(''))
-              }}
-            >
-              <input
-                value={chatMessage}
-                onChange={(event) => setChatMessage(event.target.value)}
-                placeholder="Type a message"
-                className="min-w-0 flex-1 rounded-lg border border-chess-border bg-chess-surface px-4 py-3 font-mono text-sm text-chess-text placeholder:text-chess-muted focus:border-chess-gold/40 focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="rounded-lg border border-chess-gold/30 bg-chess-gold/10 px-4 py-3 text-xs font-mono uppercase tracking-wide text-chess-gold transition-colors hover:bg-chess-gold/20"
+              <form
+                className="mt-3 flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void sendChatMessage(chatMessage).then(() => setChatMessage(''))
+                }}
               >
-                Send
-              </button>
-            </form>
-          </div>
+                <input
+                  value={chatMessage}
+                  onChange={(event) => setChatMessage(event.target.value)}
+                  placeholder="Type a message"
+                  className="min-w-0 flex-1 rounded-lg border border-chess-border bg-chess-surface px-4 py-3 font-mono text-sm text-chess-text placeholder:text-chess-muted focus:border-chess-gold/40 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg border border-chess-gold/30 bg-chess-gold/10 px-4 py-3 text-xs font-mono uppercase tracking-wide text-chess-gold transition-colors hover:bg-chess-gold/20"
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          )}
         </aside>
       </div>
     </main>
@@ -271,8 +340,8 @@ function ClockCard({
   return (
     <div
       className={`rounded-xl border p-4 transition-colors ${active
-          ? 'border-chess-gold/40 bg-chess-gold/10'
-          : 'border-chess-border bg-chess-panel'
+        ? 'border-chess-gold/40 bg-chess-gold/10'
+        : 'border-chess-border bg-chess-panel'
         }`}
     >
       <p className="truncate text-sm text-chess-muted">{label}</p>
@@ -293,8 +362,8 @@ function PlayerCard({
   return (
     <div
       className={`rounded-xl border p-4 transition-colors ${isActive
-          ? 'border-chess-gold/40 bg-chess-gold/10'
-          : 'border-chess-border bg-chess-panel'
+        ? 'border-chess-gold/40 bg-chess-gold/10'
+        : 'border-chess-border bg-chess-panel'
         }`}
     >
       <p className="truncate font-display text-lg text-chess-text">{label}</p>
