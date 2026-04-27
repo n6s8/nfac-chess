@@ -443,6 +443,9 @@ export async function joinGameRoom(roomId: string, user: AuthUser): Promise<Game
     (typeof payload.black_player_id === 'string' ? payload.black_player_id : room.black_player_id) ?? null
 
   payload.status = nextWhiteId && nextBlackId ? 'playing' : 'waiting'
+  if (payload.status === 'playing' && room.status === 'waiting' && !room.last_move_at) {
+    payload.last_move_at = new Date().toISOString()
+  }
   payload.updated_at = new Date().toISOString()
 
   const { data, error } = await supabase
@@ -749,4 +752,3 @@ export async function activateProMembership(
   const { error } = await supabase.from('profiles').update(patch).eq('id', userId)
   if (error) throw error
 }
-

@@ -57,40 +57,34 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
   const previewInFlightFen = useRef<string | null>(null)
   const finalizeAttemptedRef = useRef(false)
   const joinAttemptedRef = useRef(false)
-  const previousTurnRef = useRef<string | null>(null)
-  const gameStartedRef = useRef(false)
+  const activeClockKeyRef = useRef<string | null>(null)
 
   // Reset refs when room changes
   useEffect(() => {
     joinAttemptedRef.current = false
     finalizeAttemptedRef.current = false
+    activeClockKeyRef.current = null
+    setLastMoveAtMs(null)
   }, [roomId])
 
-  // Track turn changes and update lastMoveAtMs using client time only
-  // This prevents clock skew from server-side timestamp differences
+  // Track the active clock segment locally. Persisted room times are the shared
+  // base, but elapsed time is measured from the moment this client sees a turn
+  // become active so two browsers never subtract each other's wall-clock times.
   useEffect(() => {
-    if (!room || !room.last_move_at) {
+    if (!room || room.status !== 'playing') {
       setLastMoveAtMs(null)
-      gameStartedRef.current = false
-      previousTurnRef.current = null
+      activeClockKeyRef.current = null
       return
     }
 
-    // Mark game as started once we have a last_move_at
-    if (!gameStartedRef.current && room.moves.length > 0) {
-      gameStartedRef.current = true
-      previousTurnRef.current = room.turn
-      // Initialize lastMoveAtMs to now when game truly starts with first move
-      setLastMoveAtMs(Date.now())
-      return
-    }
+    const activeClockKey = `${room.id}:${room.moves.length}:${room.turn}`
+    if (activeClockKeyRef.current === activeClockKey) return
 
-    // Detect turn change - when turn changes, reset timer to now
-    if (gameStartedRef.current && previousTurnRef.current && previousTurnRef.current !== room.turn) {
-      previousTurnRef.current = room.turn
-      setLastMoveAtMs(Date.now())
-    }
-  }, [room?.turn, room?.moves.length, room?.last_move_at, room])
+    const nowMs = Date.now()
+    activeClockKeyRef.current = activeClockKey
+    setLastMoveAtMs(nowMs)
+    setClockTick(nowMs)
+  }, [room?.id, room?.moves.length, room?.status, room?.turn])
 
   useEffect(() => {
     if (!roomId) return
@@ -271,11 +265,10 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
 
       const result = isGameOver(game) ? getGameResult(game) : null
       const nextTurn = getCurrentTurn(game)
-      const nowIso = new Date().toISOString()
+      const nowMs = Date.now()
+      const nowIso = new Date(nowMs).toISOString()
       const config = getTimeControlConfig(room.time_control ?? 'blitz')
-      const elapsed = room.last_move_at
-        ? Math.max(0, Date.now() - new Date(room.last_move_at).getTime())
-        : 0
+      const elapsed = lastMoveAtMs === null ? 0 : Math.max(0, nowMs - lastMoveAtMs)
       const whiteTime = room.white_time_ms ?? config.initialMs
       const blackTime = room.black_time_ms ?? config.initialMs
       const winnerId =
@@ -308,7 +301,8 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
       }
 
       setRoom(optimisticRoom)
-      setLastMoveAtMs(Date.now())  // Use current client time for elapsed calculation
+      setLastMoveAtMs(nowMs)
+      setClockTick(nowMs)
 
       void updateGameRoomState(room.id, {
         fen: optimisticRoom.fen,
@@ -362,7 +356,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
       previewRef.current = null
       return true
     },
-    [role, room]
+    [lastMoveAtMs, role, room]
   )
 
   const runAnalysis = useCallback(async () => {
