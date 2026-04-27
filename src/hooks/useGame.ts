@@ -505,5 +505,6 @@ export function useGame(user?: AuthUser | null, engineLevel: EngineLevel = 'Inte
     acceptDraw,
     inCheck,
     turn,
+    gameId: gameRecordId.current,
   } as const
 }

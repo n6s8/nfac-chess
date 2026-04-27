@@ -4,6 +4,7 @@ import { ChessBoardPanel } from '@/components/ChessBoard'
 import { MoveHistory } from '@/components/MoveHistory'
 import { PreferenceToolbar } from '@/components/PreferenceToolbar'
 import { ThinkingStylePanel } from '@/components/ThinkingStylePanel'
+import { TrainingPlan } from '@/components/TrainingPlan'
 import { useGame } from '@/hooks/useGame'
 import { formatEvaluation } from '@/lib/chess'
 import type { AuthUser, ThemePreferences } from '@/types'
@@ -27,7 +28,7 @@ export function GamePage({
   onUpgradeRequested,
   creatingRoom,
 }: Props) {
-  const { state, onPlayerMove, runAnalysis, reset, resign, offerDraw, inCheck, turn } = useGame(
+  const { state, onPlayerMove, runAnalysis, reset, resign, offerDraw, inCheck, turn, gameId } = useGame(
     user,
     preferences.engineLevel
   )
@@ -156,12 +157,18 @@ export function GamePage({
               onReset={reset}
               isPro={user?.is_pro ?? false}
               onUpgradeRequested={onUpgradeRequested}
+              gameId={gameId}
             />
           </div>
 
           {/* Thinking style - shown after analysis */}
           {extState.thinkingStyle && (
             <ThinkingStylePanel profile={extState.thinkingStyle} />
+          )}
+
+          {/* Training plan — shown after thinking style */}
+          {extState.thinkingStyle && (
+            <TrainingPlan profile={extState.thinkingStyle} gameId={gameId} />
           )}
         </aside>
       </div>

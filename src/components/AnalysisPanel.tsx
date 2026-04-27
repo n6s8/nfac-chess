@@ -8,6 +8,7 @@ interface Props {
   onReset?: () => void
   isPro?: boolean
   onUpgradeRequested?: () => void
+  gameId?: string | null
 }
 
 const TYPE_META: Record<
@@ -36,8 +37,15 @@ const TYPE_META: Record<
   },
 }
 
-export function AnalysisPanel({ state, onRunAnalysis, onReset, isPro = false, onUpgradeRequested }: Props) {
+function formatEval(cp: number): string {
+  if (Math.abs(cp) > 900) return cp > 0 ? '+M' : '-M'
+  const p = cp / 100
+  return `${p > 0 ? '+' : ''}${p.toFixed(1)}`
+}
+
+export function AnalysisPanel({ state, onRunAnalysis, onReset, isPro = false, onUpgradeRequested, gameId }: Props) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const gameOver = state.result !== null || state.status === 'draw' || state.status === 'checkmate'
   const issues = useMemo(
@@ -48,7 +56,20 @@ export function AnalysisPanel({ state, onRunAnalysis, onReset, isPro = false, on
   const selected =
     selectedIndex !== null ? state.analysis.find((item) => item.moveIndex === selectedIndex) ?? null : null
 
-  const worstMoves = [...issues].sort((left, right) => right.severity - left.severity).slice(0, 3)
+  // Top 3 by eval drop — these are the "key moments"
+  const keyMoments = useMemo(
+    () => [...issues].sort((a, b) => a.evaluationDiff - b.evaluationDiff).slice(0, 3),
+    [issues]
+  )
+
+  const handleShare = () => {
+    if (!gameId) return
+    const url = `${window.location.origin}/replay/${gameId}`
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    })
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -127,61 +148,136 @@ export function AnalysisPanel({ state, onRunAnalysis, onReset, isPro = false, on
 
       {state.analysis.length > 0 ? (
         <>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {worstMoves.map((move) => (
-              <button
-                key={move.moveIndex}
-                type="button"
-                onClick={() => setSelectedIndex(move.moveIndex)}
-                className="rounded-lg border border-chess-border bg-chess-surface p-3 text-left transition-colors hover:border-chess-gold/30"
-              >
-                <p className="font-mono text-xs text-chess-muted">Worst move</p>
-                <p className="mt-1 font-mono text-sm text-chess-text">{move.move}</p>
-                <p className="mt-2 text-xs text-chess-blunder">Severity {move.severity}</p>
-              </button>
-            ))}
-          </div>
+          {/* ── KEY MOMENTS ─────────────────────────────────────── */}
+          {keyMoments.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-mono uppercase tracking-[0.18em] text-chess-muted">
+                🔑 Key moments
+              </p>
+              <div className="space-y-2">
+                {keyMoments.map((move, rank) => {
+                  const evalBefore = move.scoreBefore
+                  const evalAfter = move.scoreAfter
+                  const swing = Math.abs(move.evaluationDiff / 100).toFixed(1)
+                  const moveNum = Math.floor(move.moveIndex / 2) + 1
+                  const isBlunder = move.blunder
+                  const meta = TYPE_META[move.type]
 
-          <div className="space-y-2">
-            {issues.length === 0 ? (
-              <div className="rounded-lg border border-chess-good/30 bg-chess-surface p-3 text-center">
-                <p className="font-mono text-sm text-chess-good">No major mistakes found.</p>
-              </div>
-            ) : (
-              issues.map((item) => {
-                const meta = TYPE_META[item.type]
-                return (
-                  <button
-                    key={item.moveIndex}
-                    type="button"
-                    onClick={() => setSelectedIndex(item.moveIndex)}
-                    className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                      selectedIndex === item.moveIndex
-                        ? 'border-chess-gold/50 bg-chess-gold/10'
-                        : 'border-chess-border bg-chess-surface hover:border-chess-border/80'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-mono text-sm text-chess-text">{item.move}</p>
-                        <p className="mt-1 text-xs text-chess-muted">{meta.description}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide ${meta.classes}`}>
+                  return (
+                    <button
+                      key={move.moveIndex}
+                      type="button"
+                      onClick={() => setSelectedIndex(move.moveIndex)}
+                      className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                        selectedIndex === move.moveIndex
+                          ? 'border-chess-gold/50 bg-chess-gold/10'
+                          : 'border-chess-border bg-chess-surface hover:border-chess-gold/20'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-chess-muted">#{rank + 1}</span>
+                            <span className="text-sm font-mono font-semibold text-chess-text">
+                              Move {moveNum}: {move.move}
+                            </span>
+                            {isBlunder && (
+                              <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-mono uppercase text-red-400">
+                                blunder
+                              </span>
+                            )}
+                          </div>
+                          {/* Eval swing: was +0.4, became -1.2 → lost 1.6 pawns */}
+                          <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-mono">
+                            <span className={evalBefore >= 0 ? 'text-chess-good' : 'text-chess-blunder'}>
+                              {formatEval(evalBefore)}
+                            </span>
+                            <span className="text-chess-muted">→</span>
+                            <span className={evalAfter >= 0 ? 'text-chess-good' : 'text-chess-blunder'}>
+                              {formatEval(evalAfter)}
+                            </span>
+                            <span className="text-chess-muted ml-1">({swing} pawns lost)</span>
+                          </div>
+                          {/* Best move alternative */}
+                          {move.bestMove && (
+                            <p className="mt-1 text-[11px] font-mono text-chess-muted">
+                              Better:{' '}
+                              <span className="text-chess-good font-semibold">{move.bestMove}</span>
+                            </p>
+                          )}
+                        </div>
+                        <span className={`flex-shrink-0 inline-flex rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-wide ${meta.classes}`}>
                           {meta.label}
                         </span>
-                        <p className="mt-2 text-xs text-chess-blunder">
-                          {Math.abs(item.evaluationDiff / 100).toFixed(1)} pawns
-                        </p>
                       </div>
-                    </div>
-                  </button>
-                )
-              })
-            )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── ALL ISSUES ──────────────────────────────────────── */}
+          <div>
+            <p className="mb-2 text-xs font-mono uppercase tracking-[0.18em] text-chess-muted">
+              All issues
+            </p>
+            <div className="space-y-2">
+              {issues.length === 0 ? (
+                <div className="rounded-lg border border-chess-good/30 bg-chess-surface p-3 text-center">
+                  <p className="font-mono text-sm text-chess-good">No major mistakes found.</p>
+                </div>
+              ) : (
+                issues.map((item) => {
+                  const meta = TYPE_META[item.type]
+                  return (
+                    <button
+                      key={item.moveIndex}
+                      type="button"
+                      onClick={() => setSelectedIndex(item.moveIndex)}
+                      className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                        selectedIndex === item.moveIndex
+                          ? 'border-chess-gold/50 bg-chess-gold/10'
+                          : 'border-chess-border bg-chess-surface hover:border-chess-border/80'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-sm text-chess-text">{item.move}</p>
+                          <p className="mt-1 text-xs text-chess-muted">{meta.description}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide ${meta.classes}`}>
+                            {meta.label}
+                          </span>
+                          <p className="mt-2 text-xs text-chess-blunder">
+                            {Math.abs(item.evaluationDiff / 100).toFixed(1)} pawns
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
           </div>
 
           {selected ? <SelectedMove analysis={selected} /> : null}
+
+          {/* Share replay button */}
+          {gameId && (
+            <button
+              type="button"
+              onClick={handleShare}
+              className={`w-full rounded-lg border px-4 py-2.5 text-xs font-mono uppercase tracking-wide transition-colors ${
+                copied
+                  ? 'border-chess-good/40 bg-chess-good/10 text-chess-good'
+                  : 'border-chess-border bg-chess-surface text-chess-muted hover:border-chess-gold/40 hover:text-chess-gold'
+              }`}
+            >
+              {copied ? '✓ Replay link copied!' : '📋 Share this replay'}
+            </button>
+          )}
         </>
       ) : null}
 
@@ -213,12 +309,13 @@ function TypeLegend() {
 
 function SelectedMove({ analysis }: { analysis: MoveAnalysis }) {
   const meta = TYPE_META[analysis.type]
+  const moveNum = Math.floor(analysis.moveIndex / 2) + 1
 
   return (
     <div className="animate-slide-up rounded-lg border border-chess-border bg-chess-surface p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="font-mono text-sm text-chess-muted">Selected move</p>
+          <p className="font-mono text-sm text-chess-muted">Move {moveNum}</p>
           <h3 className="mt-1 font-display text-lg text-chess-gold">{analysis.move}</h3>
         </div>
         <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] uppercase tracking-wide ${meta.classes}`}>
@@ -230,10 +327,12 @@ function SelectedMove({ analysis }: { analysis: MoveAnalysis }) {
         <div className="rounded-lg bg-chess-panel p-3">
           <p className="text-xs font-mono text-chess-muted">Played</p>
           <p className="mt-1 font-mono text-chess-text">{analysis.move}</p>
+          <p className="mt-1 text-xs font-mono text-chess-blunder">{formatEval(analysis.scoreAfter)}</p>
         </div>
         <div className="rounded-lg border border-chess-good/20 bg-chess-panel p-3">
           <p className="text-xs font-mono text-chess-muted">Best move</p>
           <p className="mt-1 font-mono text-chess-good">{analysis.bestMove}</p>
+          <p className="mt-1 text-xs font-mono text-chess-good">{formatEval(analysis.scoreBefore)}</p>
         </div>
       </div>
 
