@@ -52,6 +52,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [liveInsight, setLiveInsight] = useState<GameState['liveInsight']>(null)
   const [clockTick, setClockTick] = useState(() => Date.now())
+  const [lastMoveAtMs, setLastMoveAtMs] = useState<number | null>(null)
   const previewRef = useRef<LiveMovePreview | null>(null)
   const previewInFlightFen = useRef<string | null>(null)
   const finalizeAttemptedRef = useRef(false)
@@ -61,6 +62,15 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
     joinAttemptedRef.current = false
     finalizeAttemptedRef.current = false
   }, [roomId])
+
+  // Sync lastMoveAtMs when room.last_move_at changes from server
+  useEffect(() => {
+    if (!room?.last_move_at) {
+      setLastMoveAtMs(null)
+    } else {
+      setLastMoveAtMs(new Date(room.last_move_at).getTime())
+    }
+  }, [room?.last_move_at])
 
   useEffect(() => {
     if (!roomId) return
@@ -131,8 +141,6 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
                 current.status !== nextRoom.status ||
                 current.turn !== nextRoom.turn ||
                 current.result !== nextRoom.result ||
-                current.white_time_ms !== nextRoom.white_time_ms ||
-                current.black_time_ms !== nextRoom.black_time_ms ||
                 (current.chat_messages?.length ?? 0) !== (nextRoom.chat_messages?.length ?? 0)
 
               if (changed) {
@@ -146,7 +154,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
         .catch((pollError) => {
           console.error('[room] poll error:', pollError)
         })
-    }, 1200)
+    }, 2500)
 
     return () => window.clearInterval(interval)
   }, [roomId])
@@ -184,18 +192,18 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
     const whiteTime = room?.white_time_ms ?? config.initialMs
     const blackTime = room?.black_time_ms ?? config.initialMs
 
-    if (!room || room.status === 'finished' || !room.last_move_at) {
+    if (!room || room.status === 'finished' || lastMoveAtMs === null) {
       return { white: whiteTime, black: blackTime }
     }
 
-    const elapsed = Math.max(0, clockTick - new Date(room.last_move_at).getTime())
+    const elapsed = Math.max(0, clockTick - lastMoveAtMs)
 
     if (room.turn === 'white') {
       return { white: Math.max(0, whiteTime - elapsed), black: blackTime }
     }
 
     return { white: whiteTime, black: Math.max(0, blackTime - elapsed) }
-  }, [clockTick, room])
+  }, [clockTick, room, lastMoveAtMs])
 
   const pendingDrawOffer = useMemo(() => {
     if (!room) return null
@@ -280,6 +288,7 @@ export function useGameRoom(roomId: string | undefined, user?: AuthUser | null) 
       }
 
       setRoom(optimisticRoom)
+      setLastMoveAtMs(Date.now())  // Use current client time for elapsed calculation
 
       void updateGameRoomState(room.id, {
         fen: optimisticRoom.fen,
