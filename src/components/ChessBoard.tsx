@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
-import type { Square } from 'chess.js'
+import { Chess, type Square } from 'chess.js'
 import type { CSSProperties } from 'react'
 import type { BoardTheme, GameState, PlayerColor } from '@/types'
 import { soundCapture, soundCheck, soundDraw, soundGameOver, soundMove } from '@/hooks/useChessSound'
@@ -94,17 +94,78 @@ export function ChessBoardPanel({
 
     if (selectedSquare) {
       styles[selectedSquare] = { backgroundColor: 'rgba(59, 130, 246, 0.25)' }
+
+      // Show legal moves from the selected square
+      try {
+        const game = new Chess(state.fen)
+        
+        // If the user clicks their piece when it's NOT their turn (e.g., just exploring moves),
+        // chess.js won't return moves because it respects the FEN's active color.
+        // To allow seeing moves for any piece, we can temporarily set the turn to that piece's color.
+        const piece = game.get(selectedSquare as Square)
+        if (piece) {
+          const fenParts = state.fen.split(' ')
+          fenParts[1] = piece.color // Force the turn to the selected piece's color
+          game.load(fenParts.join(' '))
+        }
+
+        const moves = game.moves({ square: selectedSquare as Square, verbose: true })
+        
+        for (const move of moves) {
+          const isCapture = !!game.get(move.to as Square)
+          
+          styles[move.to] = {
+            ...styles[move.to],
+            backgroundImage: isCapture 
+              ? 'radial-gradient(transparent 0%, transparent 79%, rgba(0,0,0,.3) 80%)'
+              : 'radial-gradient(circle, rgba(0,0,0,.3) 25%, transparent 25%)',
+            // If we set borderRadius: 50% here, it clips the whole square (including any backgroundColor).
+            // But since radial-gradient is already circular, we don't strictly need borderRadius for the dot.
+            // We just let the gradient draw the circle/ring over the square.
+          }
+        }
+      } catch (error) {
+        // ignore invalid FENs
+      }
     }
 
     return styles
-  }, [selectedSquare, state.liveInsight, state.moves])
+  }, [selectedSquare, state.liveInsight, state.moves, state.fen])
 
   const handleSquareClick = useCallback(
     (square: Square) => {
       if (!isInteractive) return
-      setSelectedSquare((current) => (current === square ? null : square))
+      
+      if (selectedSquare === square) {
+        // Deselect if clicking the same square twice
+        setSelectedSquare(null)
+        return
+      }
+
+      // If a square is already selected, try to move to the newly clicked square
+      if (selectedSquare) {
+        try {
+          const game = new Chess(state.fen)
+          const moves = game.moves({ square: selectedSquare as Square, verbose: true })
+          const validMove = moves.find((m) => m.to === square)
+
+          if (validMove) {
+            // It's a valid move, execute it!
+            const success = onMove(selectedSquare, square, validMove.promotion ? 'q' : undefined)
+            if (success) {
+              setSelectedSquare(null)
+              return
+            }
+          }
+        } catch (error) {
+          // Ignore FEN parsing errors
+        }
+      }
+
+      // Otherwise, select the newly clicked square
+      setSelectedSquare(square)
     },
-    [isInteractive]
+    [isInteractive, selectedSquare, state.fen, onMove]
   )
 
   const handlePieceDrop = useCallback(
@@ -123,13 +184,17 @@ export function ChessBoardPanel({
 
   const bannerText =
     statusText ??
-    (state.isAiThinking
-      ? 'Engine thinking...'
-      : state.status === 'waiting'
-        ? 'Waiting for opponent...'
-        : inCheck
-          ? '⚠ Check!'
-          : null)
+    (state.status === 'checkmate'
+      ? 'Checkmate!'
+      : state.status === 'stalemate'
+        ? 'Stalemate!'
+        : state.isAiThinking
+          ? 'Engine thinking...'
+          : state.status === 'waiting'
+            ? 'Waiting for opponent...'
+            : inCheck
+              ? '⚠ Check!'
+              : null)
 
   const gameOver = state.result !== null && state.status !== 'analyzing' && state.status !== 'analyzed'
 

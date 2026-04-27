@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLanguage } from '@/hooks/useLanguage'
 import { AuthModal } from '@/components/AuthModal'
 import { CreateRoomModal } from '@/components/CreateRoomModal'
 import { ProModal } from '@/components/ProModal'
