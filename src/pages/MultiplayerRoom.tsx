@@ -42,6 +42,7 @@ export function MultiplayerRoomPage({
     pendingDrawOffer,
     sendChatMessage,
     shareUrl,
+    thinkingStyle,
   } = useGameRoom(roomId, user)
   const [copied, setCopied] = useState(false)
   const [chatMessage, setChatMessage] = useState('')
@@ -184,10 +185,10 @@ export function MultiplayerRoomPage({
             </span>
           </div>
 
-          {state.thinkingStyle && (
+          {thinkingStyle && (
             <div className="mt-2 grid gap-4 sm:grid-cols-2">
-              <ThinkingStylePanel profile={state.thinkingStyle} />
-              <TrainingPlan profile={state.thinkingStyle} gameId={room.id} />
+              <ThinkingStylePanel profile={thinkingStyle} />
+              <TrainingPlan profile={thinkingStyle} gameId={room.id} />
             </div>
           )}
 
