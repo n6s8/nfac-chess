@@ -49,8 +49,8 @@ export function GamePage({
           preferences.focusMode ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_400px]'
         }`}
       >
-        {/* Left: Board column - Sticky to prevent empty space when scrolling */}
-        <section className="sticky top-4 flex min-w-0 flex-col gap-3">
+        {/* Left: Board column */}
+        <section className="flex min-w-0 flex-col gap-3">
           {/* Algorithmic live insight banner */}
           {preferences.algorithmicMode && (
             <AlgorithmicBanner
@@ -121,6 +121,14 @@ export function GamePage({
               </button>
             ) : null}
           </div>
+
+          {/* Post-game reports - Moved to left column to balance height! */}
+          {extState.thinkingStyle && (
+            <div className="mt-2 grid gap-4 sm:grid-cols-2">
+              <ThinkingStylePanel profile={extState.thinkingStyle} />
+              <TrainingPlan profile={extState.thinkingStyle} gameId={gameId} />
+            </div>
+          )}
         </section>
 
         {/* Right: Sidebar - Scrolls while board stays fixed */}
@@ -159,16 +167,6 @@ export function GamePage({
               gameId={gameId}
             />
           </div>
-
-          {/* Thinking style - shown after analysis */}
-          {extState.thinkingStyle && (
-            <ThinkingStylePanel profile={extState.thinkingStyle} />
-          )}
-
-          {/* Training plan — shown after thinking style */}
-          {extState.thinkingStyle && (
-            <TrainingPlan profile={extState.thinkingStyle} gameId={gameId} />
-          )}
         </aside>
       </div>
     </main>
