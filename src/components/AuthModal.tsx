@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { COUNTRY_OPTIONS, getCitiesForCountry } from '@/lib/location'
-import { signIn, signUp, upsertProfile } from '@/lib/supabase'
+import { signIn, signUp, upsertProfile, supabase } from '@/lib/supabase'
 
 interface Props {
   open: boolean
@@ -40,9 +40,11 @@ export function AuthModal({ open, onClose, onSuccess }: Props) {
         }
 
         // Check username uniqueness before attempting signup
-        const { data: existing } = await import('@/lib/supabase').then(m =>
-          m.supabase.from('profiles').select('id').eq('username', trimmedUsername).maybeSingle()
-        )
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', trimmedUsername)
+          .maybeSingle()
         if (existing) {
           setError('That username is already taken. Choose a different one.')
           setLoading(false)

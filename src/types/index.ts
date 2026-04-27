@@ -101,6 +101,8 @@ export interface ProfileRecord {
   is_pro?: boolean
   coins?: number
   owned_themes?: string[]
+  daily_puzzle_streak?: number
+  last_puzzle_date?: string | null
   stripe_customer_id?: string | null
   stripe_subscription_id?: string | null
   created_at?: string

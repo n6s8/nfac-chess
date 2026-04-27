@@ -56,7 +56,19 @@ serve(async (req: Request) => {
     const apiKey = Deno.env.get('GROQ_API_KEY')
     if (!apiKey) throw new Error('GROQ_API_KEY secret not set')
 
-    const { moves, analysis } = await req.json()
+    const { mode, moves, analysis, move, bestMove } = await req.json()
+
+    // ── Single Move Explanation Mode ──────────────────────────────────────────
+    if (mode === 'explain-move') {
+      const explanation = await groqChat(
+        apiKey,
+        'You are AlgoChess AI, a chess tutor who explains mistakes through algorithmic thinking. Focus on greedy choices, minimax, trade-offs, and positional consequences. Answer in no more than 2 short sentences.',
+        `Explain why playing ${move} instead of ${bestMove} may be weaker. Keep it concise and use algorithmic thinking language.`
+      )
+      return new Response(JSON.stringify({ explanation }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     // ── Node 1: Engine Analyst (deterministic, no LLM) ────────────────────────
     const blunders = analysis.filter((a: any) => a.blunder === true)

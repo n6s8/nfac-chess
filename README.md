@@ -1,6 +1,6 @@
 # AlgoChess
 
-AlgoChess is a chess platform that uses computer science as a lens for game analysis. It is built for students, developers, and competitive players who want to understand not just what mistake they made, but what algorithmic failure caused it — greedy local optimization, failure to evaluate the opponent's best reply (minimax), premature search pruning, or structural positional neglect.
+AlgoChess is the chess platform for developers and CS students. It doesn't just tell you what mistake you made — it tells you what algorithmic failure caused it: greedy local optimization, minimax blindness, premature search pruning, or positional neglect. Think of it as LeetCode feedback, but applied to chess.
 
 The system runs a real-time Stockfish evaluation engine in the browser, a multi-agent LangGraph pipeline for post-game debrief, a retrieval-augmented generation (RAG) historian that maps your play to historical grandmaster games, and a full multiplayer suite built on Supabase Realtime.
 
@@ -20,7 +20,28 @@ The system runs a real-time Stockfish evaluation engine in the browser, a multi-
 | **AI Inference** | Groq API — llama-3.1-8b-instant, live |
 | **Chess Engine** | Stockfish 16 WASM — runs in browser Web Worker, no server |
 
-All external services (Vercel, Supabase, Groq, Stripe) are fully connected and operational in production. The multiplayer rooms, ELO updates, game history, virtual economy, and AI debriefs all write to and read from the live Supabase database. Server-side secrets are securely managed in Supabase Edge Functions.
+All external services (Vercel, Supabase, Groq, Stripe) are configured and connected in production. The architecture assumes live Supabase, Groq, and Vercel — see Setup to run with your own keys. The multiplayer rooms, ELO updates, game history, virtual economy, and AI debriefs all write to and read from the live Supabase database. Server-side secrets are securely managed in Supabase Edge Functions.
+
+---
+
+## Product Hypothesis
+
+### Target user
+CS students and early-career developers (18–28) who play chess casually and are preparing for technical interviews or studying algorithms.
+
+### Value proposition
+The only chess platform that explains moves in algorithmic terms — turning each game into a CS lesson.
+
+### Key metrics we'd track (post-launch)
+| Metric | Target |
+|--------|--------|
+| D1 retention | > 35% |
+| Games per session | > 2 |
+| Master Council debrief open rate | > 60% |
+| Free → Pro conversion | > 4% |
+
+### Monetization
+Pro tier ($4.99/mo): unlimited Master Council debriefs (free = 3/day), custom board themes, priority Stockfish depth (depth 24 vs 16).
 
 ---
 
@@ -125,9 +146,9 @@ flowchart LR
 
 ---
 
-### LangGraph Multi-agent Pipeline (Master Council)
+### Master Council (5-stage Pipeline)
 
-Five agents run in a strict sequential directed acyclic graph. No branching. Each node reads the full state produced so far, adds its own report, and passes the enriched state to the next node.
+The debrief pipeline follows a 5-stage sequential design (Engine Analyst → CS Professor → Historian → Emotional Coach → Synthesizer), implemented as a manual async chain in the `ai-debrief` Edge Function. The pseudo-code graph definition in `src/lib/agents.ts` mirrors this structure and serves as the architectural reference. No branching occurs. Each node reads the full state produced so far, adds its own report, and passes the enriched state to the next node.
 
 ```mermaid
 flowchart TD
@@ -343,7 +364,7 @@ erDiagram
 
 - Node.js 18+
 - A Supabase project (free tier is sufficient)
-- A Groq API key (free tier is sufficient for development)
+- A Groq API key (added as a Supabase Secret for the Edge Function)
 
 ### Steps
 
@@ -373,15 +394,12 @@ Edit `.env.local`:
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<your-anon-key>
 
-# For basic single-player move analysis
-VITE_GROQ_API_KEY=gsk_...
-
 # Stripe public keys
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 VITE_STRIPE_PRICE_ID=price_...
 ```
 
-**Note on Security:** Sensitive keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the main `GROQ_API_KEY` for the Master Council) are stored securely in **Supabase Secrets** and are only accessed by Edge Functions. They are never exposed to the browser.
+**Note on Security:** Sensitive keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the `GROQ_API_KEY` for the Master Council and move explanations) are stored securely in **Supabase Secrets** and are only accessed by Edge Functions. They are never exposed to the browser bundle.
 
 **4. Apply the database schema**
 
@@ -403,10 +421,8 @@ The app runs on `http://localhost:5173` by default.
 |---|---|---|
 | `VITE_SUPABASE_URL` | Yes | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Yes | Supabase anon public key |
-| `VITE_GROQ_API_KEY` | No* | Groq API key for LLM features |
-| `VITE_OPENAI_API_KEY` | No* | OpenAI key (fallback for Groq) |
-
-*At least one LLM key is required for move explanations and the multi-agent debrief.
+| `VITE_STRIPE_PUBLISHABLE_KEY` | Yes | Stripe Publishable Key |
+| `VITE_STRIPE_PRICE_ID` | Yes | Stripe Price ID for Pro |
 
 ---
 
@@ -422,11 +438,10 @@ src/
 │   └── PreferenceToolbar.tsx   Board theme, engine level, focus mode controls
 ├── hooks/
 │   ├── useGame.ts              Single-player state machine, Stockfish loop, rating updates
-│   ├── useGameRoom.ts          Multiplayer state, clock, draw negotiations, Realtime sync
-│   └── useFriends.ts           Friends list, pending requests, challenge notifications
+│   └── useGameRoom.ts          Multiplayer state, clock, draw negotiations, Realtime sync
 ├── lib/
-│   ├── agents.ts               LangGraph graph definition (5-node sequential pipeline)
-│   ├── ai.ts                   Move analysis orchestration, Groq enrichment
+│   ├── agents.ts               Architectural reference for the 5-node pipeline
+│   ├── ai.ts                   Move analysis orchestration, Edge Function proxy
 │   ├── chess.ts                chess.js wrappers (makeMove, getFen, getGameResult, etc.)
 │   ├── stockfish.ts            StockfishEngine class, UCI protocol, Web Worker bridge
 │   ├── supabase.ts             All database operations, auth, friends, challenges
@@ -435,7 +450,7 @@ src/
 │   ├── Game.tsx                Single-player layout, player cards, eval bar
 │   ├── MultiplayerRoom.tsx     Multiplayer layout, lobby, countdown, clock bars
 │   ├── Profile.tsx             User profile, game history, friends tab, challenges
-│   ├── Friends.tsx             Friend search, requests, challenge flow
+│   ├── Friends.tsx             Friend search, requests, challenge flow (logic in supabase.ts)
 │   ├── Leaderboard.tsx         Country/city-filtered rating leaderboard
 │   └── Replay.tsx              Move-by-move game replay from history
 └── types/

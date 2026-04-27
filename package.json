@@ -12,12 +12,9 @@
   "dependencies": {
     "@langchain/community": "^1.1.27",
     "@langchain/core": "^1.1.41",
-    "@langchain/groq": "^1.2.0",
-    "@langchain/langgraph": "^1.2.9",
     "@supabase/supabase-js": "^2.43.0",
     "@vercel/analytics": "^2.0.1",
     "chess.js": "^1.1.0",
-    "groq-sdk": "^1.1.2",
     "react": "^18.3.1",
     "react-chessboard": "^4.6.2",
     "react-dom": "^18.3.1",

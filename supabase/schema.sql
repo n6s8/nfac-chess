@@ -44,6 +44,8 @@ alter table public.profiles add column if not exists stripe_customer_id text;
 alter table public.profiles add column if not exists stripe_subscription_id text;
 alter table public.profiles add column if not exists created_at timestamptz not null default now();
 alter table public.profiles add column if not exists updated_at timestamptz not null default now();
+alter table public.profiles add column if not exists daily_puzzle_streak integer not null default 0;
+alter table public.profiles add column if not exists last_puzzle_date date;
 
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
@@ -172,12 +174,24 @@ on public.game_rooms
 for insert
 with check (auth.uid() is not null and created_by = auth.uid());
 
+-- TASK 1 FIX: Scoped update — only the two players in the room can write.
+-- Result, winner_id, loser_id, and ELO changes are handled EXCLUSIVELY
+-- by the record_multiplayer_result RPC (SECURITY DEFINER) below.
 drop policy if exists room_update_authenticated on public.game_rooms;
-create policy room_update_authenticated
+drop policy if exists room_update_players on public.game_rooms;
+create policy room_update_players
 on public.game_rooms
 for update
-using (auth.uid() is not null)
-with check (auth.uid() is not null);
+using (
+  auth.uid() = white_player_id
+  or auth.uid() = black_player_id
+  or auth.uid() = created_by
+)
+with check (
+  auth.uid() = white_player_id
+  or auth.uid() = black_player_id
+  or auth.uid() = created_by
+);
 
 drop policy if exists games_read_related on public.games;
 create policy games_read_related
@@ -242,6 +256,12 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECURITY NOTE: This RPC runs as SECURITY DEFINER. It is the ONLY authorized
+-- path for writing result, winner_id, loser_id, and ELO/coin changes to
+-- profiles. Direct UPDATE on game_rooms is scoped to non-result fields
+-- (fen, pgn, moves, turn, chat) via the room_update_players RLS policy.
+-- ═══════════════════════════════════════════════════════════════════════════════
 create or replace function public.record_multiplayer_result(
   p_room_id uuid,
   p_pgn text,

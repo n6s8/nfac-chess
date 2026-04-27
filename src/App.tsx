@@ -14,6 +14,7 @@ import { ProfilePage } from '@/pages/Profile'
 import { ReplayPage } from '@/pages/Replay'
 import { FriendsPage } from '@/pages/Friends'
 import { ShopPage } from '@/pages/Shop'
+import { DailyPuzzlePage } from '@/pages/DailyPuzzle'
 
 export default function App() {
   return (
@@ -76,7 +77,7 @@ function AlgoChessApp() {
             <div>
               <p className="font-display text-xl text-chess-gold">AlgoChess</p>
               <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-chess-muted">
-                Algorithmic thinking
+                Chess coaching through the lens of computer science
               </p>
             </div>
 
@@ -85,6 +86,7 @@ function AlgoChessApp() {
               <AppLink to="/leaderboard">Leaderboard</AppLink>
               <AppLink to="/friends">Friends</AppLink>
               <AppLink to="/shop">Store</AppLink>
+              <AppLink to="/puzzle">Daily Puzzle 🔥</AppLink>
               <AppLink to="/profile">Profile</AppLink>
             </nav>
           </div>
@@ -212,6 +214,16 @@ function AlgoChessApp() {
               user={user}
               onAuthRequested={() => setAuthOpen(true)}
               onUpgradeRequested={() => setProOpen(true)}
+            />
+          }
+        />
+        <Route
+          path="/puzzle"
+          element={
+            <DailyPuzzlePage
+              user={user}
+              onAuthRequested={() => setAuthOpen(true)}
+              onPuzzleSolved={refresh}
             />
           }
         />

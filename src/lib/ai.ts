@@ -1,25 +1,19 @@
-import Groq from 'groq-sdk'
+/**
+ * ai.ts — Post-game analysis orchestration.
+ *
+ * SECURITY: NO LLM API keys in this file. All Groq calls are proxied through
+ * the `ai-debrief` Supabase Edge Function (server-side).
+ * The Stockfish engine analysis still runs locally in the browser Web Worker.
+ */
 import { Chess } from 'chess.js'
 import { uciToSan } from './chess'
 import { getEngine } from './stockfish'
+import { supabase } from './supabase'
 import type { ChessMove, MistakeType, MoveAnalysis, MoveInsight } from '@/types'
 
 const BLUNDER_THRESHOLD = parseInt(import.meta.env.VITE_BLUNDER_THRESHOLD ?? '150', 10)
 const MISTAKE_THRESHOLD = 50
-const GROQ_API_KEY = (
-  import.meta.env.VITE_GROQ_API_KEY ??
-  import.meta.env.VITE_OPENAI_API_KEY
-) as string | undefined
 const FALLBACK_EXPLANATION = 'This move prioritizes short-term gain over long-term strategy.'
-
-const groq = GROQ_API_KEY
-  ? new Groq({
-      apiKey: GROQ_API_KEY,
-      dangerouslyAllowBrowser: true,
-      maxRetries: 1,
-      timeout: 10000,
-    })
-  : null
 
 export async function analyzeGame(
   moves: ChessMove[],
@@ -76,35 +70,20 @@ export async function analyzeGame(
   return results
 }
 
+/**
+ * Explain a move via the secure Edge Function (no browser-side API key).
+ * Falls back to a heuristic explanation if the Edge Function is unreachable.
+ */
 export async function explainMove(move: string, bestMove: string): Promise<string> {
-  if (!groq) {
-    return FALLBACK_EXPLANATION
-  }
-
   try {
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      temperature: 0.4,
-      max_completion_tokens: 80,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            'You are AlgoChess AI, a chess tutor who explains mistakes through algorithmic thinking.',
-            'Focus on greedy choices, minimax, trade-offs, and positional consequences.',
-            'Answer in no more than 2 short sentences.',
-          ].join(' '),
-        },
-        {
-          role: 'user',
-          content: `Explain why playing ${move} instead of ${bestMove} may be weaker. Keep it concise and use algorithmic thinking language.`,
-        },
-      ],
+    const { data, error } = await supabase.functions.invoke('ai-debrief', {
+      body: { mode: 'explain-move', move, bestMove },
     })
 
-    return normalizeExplanation(completion.choices[0]?.message?.content)
-  } catch (error) {
-    console.error('[AI] explainMove error:', error)
+    if (error) throw error
+    return (data?.explanation as string) || FALLBACK_EXPLANATION
+  } catch (err) {
+    console.error('[AI] explainMove edge function error:', err)
     return FALLBACK_EXPLANATION
   }
 }
