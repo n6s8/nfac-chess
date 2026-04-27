@@ -63,6 +63,10 @@ function normalizeProfile(record: Record<string, unknown>): ProfileRecord {
       typeof record.stripe_customer_id === 'string' ? record.stripe_customer_id : null,
     stripe_subscription_id:
       typeof record.stripe_subscription_id === 'string' ? record.stripe_subscription_id : null,
+    daily_puzzle_streak:
+      typeof record.daily_puzzle_streak === 'number' ? record.daily_puzzle_streak : 0,
+    last_puzzle_date:
+      typeof record.last_puzzle_date === 'string' ? record.last_puzzle_date : null,
     created_at: typeof record.created_at === 'string' ? record.created_at : undefined,
   }
 }
@@ -224,6 +228,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     owned_themes: profile?.owned_themes ?? ['classic'],
     stripe_customer_id: profile?.stripe_customer_id ?? null,
     stripe_subscription_id: profile?.stripe_subscription_id ?? null,
+    daily_puzzle_streak: profile?.daily_puzzle_streak ?? 0,
+    last_puzzle_date: profile?.last_puzzle_date ?? null,
     created_at: profile?.created_at,
   }
 }
